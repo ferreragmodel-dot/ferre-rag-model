@@ -11,6 +11,7 @@ import chromadb
 import vertexai
 from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
 from vertexai.generative_models import GenerativeModel, GenerationConfig, Content, Part, ToolConfig
+from google.api_core.exceptions import InternalServerError, ServiceUnavailable, ResourceExhausted
 
 # Langchain
 from langchain.text_splitter import CharacterTextSplitter
@@ -24,7 +25,7 @@ GCP_PROJECT = os.environ["GCP_PROJECT"]
 GCP_LOCATION = "us-central1"
 EMBEDDING_MODEL = "text-embedding-004"
 EMBEDDING_DIMENSION = 256
-GENERATIVE_MODEL = "gemini-1.5-flash-001"
+GENERATIVE_MODEL = "gemini-1.5-flash-002"
 INPUT_FOLDER = "input-datasets"
 OUTPUT_FOLDER = "outputs"
 CHROMADB_HOST = "llm-rag-chromadb"
@@ -85,16 +86,32 @@ def generate_query_embedding(query):
 	return embeddings[0].values
 
 
-def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250):
+def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250, max_retries=5, retry_delay=5):
 	# Max batch size is 250 for Vertex AI
 	all_embeddings = []
 	for i in range(0, len(chunks), batch_size):
 		batch = chunks[i:i+batch_size]
 		inputs = [TextEmbeddingInput(text, "RETRIEVAL_DOCUMENT") for text in batch]
 		kwargs = dict(output_dimensionality=dimensionality) if dimensionality else {}
-		embeddings = embedding_model.get_embeddings(inputs, **kwargs)
-		all_embeddings.extend([embedding.values for embedding in embeddings])
 
+		# Retry logic with exponential backoff
+		retry_count = 0
+		while retry_count <= max_retries:
+			try:
+				embeddings = embedding_model.get_embeddings(inputs, **kwargs)
+				all_embeddings.extend([embedding.values for embedding in embeddings])
+				break
+			except (InternalServerError, ServiceUnavailable, ResourceExhausted) as e:
+				retry_count += 1
+				if retry_count > max_retries:
+					print(f"Failed to generate embeddings after {max_retries} attempts. Last error: {str(e)}")
+					raise
+
+				# Calculate delay
+				wait_time = retry_delay * (2 ** (retry_count - 1))
+				print(f"API error: {str(e)}. Retrying in {wait_time} seconds (attempt {retry_count}/{max_retries})...")
+				time.sleep(wait_time)
+		
 	return all_embeddings
 
 
@@ -220,6 +237,8 @@ def embed(method="char-split"):
 			embeddings = generate_text_embeddings(chunks,EMBEDDING_DIMENSION, batch_size=100)
 		data_df["embedding"] = embeddings
 
+		time.sleep(5)
+
 		# Save 
 		print("Shape:", data_df.shape)
 		print(data_df.head())
@@ -231,6 +250,9 @@ def embed(method="char-split"):
 
 def load(method="char-split"):
 	print("load()")
+
+	# Clear Cache
+	chromadb.api.client.SharedSystemClient.clear_system_cache()
 
 	# Connect to chroma DB
 	client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)

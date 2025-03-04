@@ -14,8 +14,8 @@ google-cloud-aiplatform = "*"
 pandas = "*"
 langchain = "*"
 llama-index = "*"
-chromadb = "*"
 langchain-community = "*"
+chromadb = "*"
 
 [requires]
 python_version = "3.12"
