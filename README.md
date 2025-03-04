@@ -132,7 +132,7 @@ Run the following command to perform
 `python cli.py --agent --chunk_type char-split`
 
 This will:
-* Take the user question and pass it to LLM to find the user intent
+* Take the user question and pass it to LLM to find the user intent (e.g: `Describe where cheese making is important in Pavlos's book?`)
 * Perform function calling to get all the responses required to answer the question
 * Pass the query and context to the LLM
 * Displays the LLM's response
