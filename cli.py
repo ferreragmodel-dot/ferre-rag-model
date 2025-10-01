@@ -88,7 +88,6 @@ def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250, 
 
 	for i in range(0, len(chunks), batch_size):
 		batch = chunks[i:i+batch_size]
-		batch = batch.tolist()
 
 		# Retry logic with exponential backoff
 		retry_count = 0
@@ -232,6 +231,7 @@ def embed(method="char-split"):
 		print(data_df.head())
 
 		chunks = data_df["chunk"].values
+		chunks = chunks.tolist()
 		if method == "semantic-split":
 			embeddings = generate_text_embeddings(chunks,EMBEDDING_DIMENSION, batch_size=15)
 		else:
