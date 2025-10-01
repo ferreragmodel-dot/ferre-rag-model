@@ -8,15 +8,17 @@ import hashlib
 import chromadb
 
 # Vertex AI
-import vertexai
-from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
-from vertexai.generative_models import GenerativeModel, GenerationConfig, Content, Part, ToolConfig
-from google.api_core.exceptions import InternalServerError, ServiceUnavailable, ResourceExhausted
+from google import genai
+from google.genai import types
+from google.genai import errors
+# import vertexai
+# from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
+# from vertexai.generative_models import GenerativeModel, GenerationConfig, Content, Part, ToolConfig
+# from google.api_core.exceptions import InternalServerError, ServiceUnavailable, ResourceExhausted
 
 # Langchain
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-#from langchain_experimental.text_splitter import SemanticChunker
 from semantic_splitter import SemanticChunker
 import agent_tools
 
@@ -25,20 +27,26 @@ GCP_PROJECT = os.environ["GCP_PROJECT"]
 GCP_LOCATION = "us-central1"
 EMBEDDING_MODEL = "text-embedding-004"
 EMBEDDING_DIMENSION = 256
-GENERATIVE_MODEL = "gemini-1.5-flash-002"
+GENERATIVE_MODEL = "gemini-2.0-flash-001"
 INPUT_FOLDER = "input-datasets"
 OUTPUT_FOLDER = "outputs"
 CHROMADB_HOST = "llm-rag-chromadb"
 CHROMADB_PORT = 8000
-vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-# https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#python
-embedding_model = TextEmbeddingModel.from_pretrained(EMBEDDING_MODEL)
-# Configuration settings for the content generation
-generation_config = {
-    "max_output_tokens": 8192,  # Maximum number of tokens for output
-    "temperature": 0.25,  # Control randomness in output
-    "top_p": 0.95,  # Use nucleus sampling
-}
+
+#############################################################################
+#                       Initialize the LLM Client                           #
+client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
+#############################################################################
+
+# vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
+# # https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#python
+# embedding_model = TextEmbeddingModel.from_pretrained(EMBEDDING_MODEL)
+# # Configuration settings for the content generation
+# generation_config = {
+#     "max_output_tokens": 8192,  # Maximum number of tokens for output
+#     "temperature": 0.0,  # Control randomness in output
+#     "top_p": 0.95,  # Use nucleus sampling
+# }
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
 You are an AI assistant specialized in cheese knowledge. Your responses are based solely on the information provided in the text chunks given to you. Do not use any external knowledge or make assumptions beyond what is explicitly stated in these chunks.
@@ -59,10 +67,10 @@ Remember:
 
 Your goal is to provide accurate, helpful information about cheese based solely on the content of the text chunks you receive with each query.
 """
-generative_model = GenerativeModel(
-	GENERATIVE_MODEL,
-	system_instruction=[SYSTEM_INSTRUCTION]
-)
+# generative_model = GenerativeModel(
+# 	GENERATIVE_MODEL,
+# 	system_instruction=[SYSTEM_INSTRUCTION]
+# )
 
 book_mappings = {
 	"Cheese and its economical uses in the diet": {"author":"C. F. Langworthy and Caroline Louisa Hunt", "year": 2023},
@@ -80,38 +88,53 @@ book_mappings = {
 
 
 def generate_query_embedding(query):
-	query_embedding_inputs = [TextEmbeddingInput(task_type='RETRIEVAL_DOCUMENT', text=query)]
-	kwargs = dict(output_dimensionality=EMBEDDING_DIMENSION) if EMBEDDING_DIMENSION else {}
-	embeddings = embedding_model.get_embeddings(query_embedding_inputs, **kwargs)
-	return embeddings[0].values
+	# query_embedding_inputs = [TextEmbeddingInput(task_type='RETRIEVAL_DOCUMENT', text=query)]
+	# kwargs = dict(output_dimensionality=EMBEDDING_DIMENSION) if EMBEDDING_DIMENSION else {}
+	# embeddings = embedding_model.get_embeddings(query_embedding_inputs, **kwargs)
+	# return embeddings[0].values
+
+	kwargs = {
+		"output_dimensionality": EMBEDDING_DIMENSION
+	}
+	response = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=query,
+        config=types.EmbedContentConfig(**kwargs)
+    )
+	return response.embeddings[0].values
 
 
 def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250, max_retries=5, retry_delay=5):
 	# Max batch size is 250 for Vertex AI
 	all_embeddings = []
+
 	for i in range(0, len(chunks), batch_size):
 		batch = chunks[i:i+batch_size]
-		inputs = [TextEmbeddingInput(text, "RETRIEVAL_DOCUMENT") for text in batch]
-		kwargs = dict(output_dimensionality=dimensionality) if dimensionality else {}
+		batch = batch.tolist()
 
 		# Retry logic with exponential backoff
 		retry_count = 0
 		while retry_count <= max_retries:
 			try:
-				embeddings = embedding_model.get_embeddings(inputs, **kwargs)
-				all_embeddings.extend([embedding.values for embedding in embeddings])
+				response = client.models.embed_content(
+					model=EMBEDDING_MODEL,
+					contents=batch,
+					config=types.EmbedContentConfig(output_dimensionality=dimensionality),
+				)
+				all_embeddings.extend([embedding.values for embedding in response.embeddings])
 				break
-			except (InternalServerError, ServiceUnavailable, ResourceExhausted) as e:
+				
+			except errors.APIError as e:
 				retry_count += 1
 				if retry_count > max_retries:
 					print(f"Failed to generate embeddings after {max_retries} attempts. Last error: {str(e)}")
 					raise
-
-				# Calculate delay
+				
+				# Calculate delay with exponential backoff
 				wait_time = retry_delay * (2 ** (retry_count - 1))
-				print(f"API error: {str(e)}. Retrying in {wait_time} seconds (attempt {retry_count}/{max_retries})...")
+				print(f"API error (code: {e.code}): {e.message}. Retrying in {wait_time} seconds (attempt {retry_count}/{max_retries})...")
 				time.sleep(wait_time)
-		
+    
 	return all_embeddings
 
 
@@ -304,28 +327,39 @@ def query(method="char-split"):
 	# Get the collection
 	collection = client.get_collection(name=collection_name)
 
-	# 1: Query based on embedding value 
-	results = collection.query(
-		query_embeddings=[query_embedding],
-		n_results=10
-	)
-	print("Query:", query)
-	print("\n\nResults:", results)
+	# # 1: Query based on embedding value 
+	# results = collection.query(
+	# 	query_embeddings=[query_embedding],
+	# 	n_results=10
+	# )
+	# print("Query:", query)
+	# print("\n\nResults:", results)
 
-	# 2: Query based on embedding value + metadata filter
-	results = collection.query(
-		query_embeddings=[query_embedding],
-		n_results=10,
-		where={"book":"The Complete Book of Cheese"}
-	)
-	print("Query:", query)
-	print("\n\nResults:", results)
+	# # 2: Query based on embedding value + metadata filter
+	# results = collection.query(
+	# 	query_embeddings=[query_embedding],
+	# 	n_results=10,
+	# 	where={"book":"The Complete Book of Cheese"}
+	# )
+	# print("Query:", query)
+	# print("\n\nResults:", results)
 
-	# 3: Query based on embedding value + lexical search filter
+	# # 3: Query based on embedding value + lexical search filter
+	# search_string = "Italian"
+	# results = collection.query(
+	# 	query_embeddings=[query_embedding],
+	# 	n_results=10,
+	# 	where_document={"$contains": search_string}
+	# )
+	# print("Query:", query)
+	# print("\n\nResults:", results)
+
+	# 4: Query based on embedding value + lexical search filter
 	search_string = "Italian"
 	results = collection.query(
 		query_embeddings=[query_embedding],
 		n_results=10,
+		where={"book":"The Complete Book of Cheese"},
 		where_document={"$contains": search_string}
 	)
 	print("Query:", query)
