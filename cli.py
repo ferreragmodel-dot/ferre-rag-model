@@ -11,10 +11,6 @@ import chromadb
 from google import genai
 from google.genai import types
 from google.genai import errors
-# import vertexai
-# from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
-# from vertexai.generative_models import GenerativeModel, GenerationConfig, Content, Part, ToolConfig
-# from google.api_core.exceptions import InternalServerError, ServiceUnavailable, ResourceExhausted
 
 # Langchain
 from langchain.text_splitter import CharacterTextSplitter
@@ -35,18 +31,9 @@ CHROMADB_PORT = 8000
 
 #############################################################################
 #                       Initialize the LLM Client                           #
-client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
+llm_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 #############################################################################
 
-# vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-# # https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#python
-# embedding_model = TextEmbeddingModel.from_pretrained(EMBEDDING_MODEL)
-# # Configuration settings for the content generation
-# generation_config = {
-#     "max_output_tokens": 8192,  # Maximum number of tokens for output
-#     "temperature": 0.0,  # Control randomness in output
-#     "top_p": 0.95,  # Use nucleus sampling
-# }
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
 You are an AI assistant specialized in cheese knowledge. Your responses are based solely on the information provided in the text chunks given to you. Do not use any external knowledge or make assumptions beyond what is explicitly stated in these chunks.
@@ -67,10 +54,6 @@ Remember:
 
 Your goal is to provide accurate, helpful information about cheese based solely on the content of the text chunks you receive with each query.
 """
-# generative_model = GenerativeModel(
-# 	GENERATIVE_MODEL,
-# 	system_instruction=[SYSTEM_INSTRUCTION]
-# )
 
 book_mappings = {
 	"Cheese and its economical uses in the diet": {"author":"C. F. Langworthy and Caroline Louisa Hunt", "year": 2023},
@@ -88,15 +71,10 @@ book_mappings = {
 
 
 def generate_query_embedding(query):
-	# query_embedding_inputs = [TextEmbeddingInput(task_type='RETRIEVAL_DOCUMENT', text=query)]
-	# kwargs = dict(output_dimensionality=EMBEDDING_DIMENSION) if EMBEDDING_DIMENSION else {}
-	# embeddings = embedding_model.get_embeddings(query_embedding_inputs, **kwargs)
-	# return embeddings[0].values
-
 	kwargs = {
 		"output_dimensionality": EMBEDDING_DIMENSION
 	}
-	response = client.models.embed_content(
+	response = llm_client.models.embed_content(
         model=EMBEDDING_MODEL,
         contents=query,
         config=types.EmbedContentConfig(**kwargs)
@@ -116,7 +94,7 @@ def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250, 
 		retry_count = 0
 		while retry_count <= max_retries:
 			try:
-				response = client.models.embed_content(
+				response = llm_client.models.embed_content(
 					model=EMBEDDING_MODEL,
 					contents=batch,
 					config=types.EmbedContentConfig(output_dimensionality=dimensionality),
@@ -396,12 +374,11 @@ def chat(method="char-split"):
 	"""
 
 	print("INPUT_PROMPT: ",INPUT_PROMPT)
-	response = generative_model.generate_content(
-		[INPUT_PROMPT],  # Input prompt
-		generation_config=generation_config,  # Configuration settings
-		stream=False,  # Enable streaming for responses
+	response = llm_client.models.generate_content(
+		model=GENERATIVE_MODEL, contents=INPUT_PROMPT
 	)
 	generated_text = response.text
+	
 	print("LLM Response:", generated_text)
 
 

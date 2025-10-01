@@ -24,4 +24,4 @@ services:
         environment:
             - IS_PERSISTENT=TRUE
             - ANONYMIZED_TELEMETRY=FALSE
-            - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["*"] # This is not recommended for production environments.
+            - CHROMA_CORS_ALLOW_ORIGINS=["*"] # This is not recommended for production environments.
