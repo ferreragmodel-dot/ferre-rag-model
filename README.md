@@ -32,7 +32,7 @@ Your folder structure should look like this:
 
 ## Run LLM RAG Container
 - Make sure you are inside the `llm-rag` folder and open a terminal at this location
-- Update `GCP_PROJECT` to your own project ID in ` docker-shell.sh`
+- Update `GCP_PROJECT` to your own project ID in `docker-shell.sh`
 - Run `sh docker-shell.sh`
 
 ## Chunk Documents
