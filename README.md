@@ -1,141 +1,132 @@
-# Building a RAG System with Vector DB and LLM
+# Gianfranco Ferré Archive RAG System
 
-In this tutorial we will build a Retrieval-Augmented Generation (RAG) system using a vector database and a Large Language Model (LLM). The system will chunk text documents, create embeddings, stores them in a vector database, and uses them to enhance LLM responses.
+This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfranco Ferré archive, using a vector database and a Large Language Model (LLM). The system ingests Ferré PDFs, chunks them, generates embeddings, stores them in ChromaDB, and enables search and chat over the archive.
 
-**Step 1:**
-<img src="images/llm-rag-flow-1.png"  width="800">
-**Step 2:**
-<img src="images/llm-rag-flow-2.png"  width="800">
+<img src="images/ferre.png" width="800">
 
+## Project Overview
+
+**Workflow:**
+1. Chunk Ferré archive PDFs into text segments
+2. Generate embeddings for each chunk (Vertex AI, OpenAI, or other)
+3. Load chunks and embeddings into ChromaDB
+4. Query and chat with the archive using LLM
+
+**Architecture:**
+- Python CLI pipeline (cli.py)
+- ChromaDB vector database (local or managed)
+- Vertex AI for embeddings (requires GCP service account)
+- Docker for containerized development and deployment
 
 ## Prerequisites
-* Have Docker installed
-* Cloned this repository to your local machine https://github.com/dlops-io/llm-rag
+- Docker installed
+- Clone this repository
+- Ferré archive PDFs (not included; add to input-datasets/ferre_notes_lessons)
+- GCP service account with Vertex AI access
 
-### Setup GCP Service Account
-- To set up a service account, go to the [GCP Console](https://console.cloud.google.com/home/dashboard), search for "Service accounts" in the top search box, or navigate to "IAM & Admin" > "Service accounts" from the top-left menu. 
-- Create a new service account called "llm-service-account." 
-- In "Grant this service account access to project" select:
-    - Storage Admin
-    - Vertex AI User
-- This will create a service account.
-- Click the service account and navigate to the tab "KEYS"
-- Click the button "ADD Key (Create New Key)" and Select "JSON". This will download a private key JSON file to your computer. 
-- Copy this JSON file into the **secrets** folder and rename it to `llm-service-account.json`.
+## Secrets & Environment Setup
+- Copy `.env.example` to `.env` and fill in your GCP project ID
+- Obtain a GCP service account key (JSON) and place it in `secrets/llm-service-account.json`
+- **Never commit .env or service account files to the repo**
 
-Your folder structure should look like this:
-
+## Folder Structure
 ```
-   |-llm-rag
-   |-secrets
+llm-rag/
+├── input-datasets/
+│   └── ferre_notes_lessons/   # Place Ferré PDFs here
+├── outputs/                   # Chunked and embedded data
+├── secrets/
+│   └── llm-service-account.json
+├── cli.py
+├── agent_tools.py
+├── semantic_splitter.py
+├── docker-shell.sh
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+├── .env
 ```
 
-## Run LLM RAG Container
-- Make sure you are inside the `llm-rag` folder and open a terminal at this location
-- Update `GCP_PROJECT` to your own project ID in `docker-shell.sh`
-- Run `sh docker-shell.sh`
+## Setup GCP Service Account
+1. Go to [GCP Console](https://console.cloud.google.com/home/dashboard)
+2. Create a service account with "Vertex AI User" and "Storage Admin" roles
+3. Download the JSON key and place it in `secrets/llm-service-account.json`
+4. Set `GOOGLE_APPLICATION_CREDENTIALS` in `.env` to point to this file
 
-## Chunk Documents
-Run the cli.py script with the --chunk flag to split your input texts into smaller chunks. To understand more about chunking check out this [visualization](https://ac215-llm-rag.dlops.io/chunkviz). Use Chrome browser for best performance.
+## Running the Pipeline
 
-**Perform Character splitting:**
+### 1. Start the containers
+```sh
+./docker-shell.sh
+```
+This will build the Docker image, start ChromaDB, and run the chunk/embed/load pipeline automatically.
 
-`python cli.py --chunk --chunk_type char-split`
+### 2. Manual CLI Usage
+You can run individual steps if needed:
 
-**Perform Recursive Character splitting:**
+**Chunk PDFs:**
+```
+python cli.py --chunk --chunk_type recursive-split
+```
+**Generate Embeddings:**
+```
+python cli.py --embed --chunk_type recursive-split
+```
+**Load into ChromaDB:**
+```
+python cli.py --load --chunk_type recursive-split
+```
 
-`python cli.py --chunk --chunk_type recursive-split`
+### 3. Query and Chat
+**Query:**
+```
+python cli.py --query --chunk_type recursive-split
+```
+**Chat:**
+```
+python cli.py --chat --chunk_type recursive-split
+```
 
-This will:
-* Read each text file in the input-datasets/books directory
-* Split the text into chunks using the specified method (character-based or recursive)
-* Save the chunks as JSONL files in the outputs directory
+## Secrets Management
+- Use `.env.example` as a template for `.env`
+- Store GCP credentials in `secrets/llm-service-account.json`
+- Do not commit secrets to the repo
+- For CI/CD, use GitHub Actions secrets
 
-## Generate Embeddings
-Generate embeddings for the text chunks:
+## Team Setup Instructions
+1. Clone the repo
+2. Add Ferré PDFs to `input-datasets/ferre_notes_lessons` (do not commit if restricted)
+3. Create `.env` from `.env.example` and set your GCP project ID
+4. Obtain your own GCP service account key and place in `secrets/llm-service-account.json`
+5. Run `./docker-shell.sh` to start the pipeline
 
-`python cli.py --embed --chunk_type char-split`
-
-`python cli.py --embed --chunk_type recursive-split`
-
-This will:
-* Reads the chunk files created in the previous section
-* Uses Vertex AI's text embedding model to generate embeddings for each chunk
-* Saves the chunks with their embeddings as new JSONL files
-* We use Vertex AI `text-embedding-004` model to generate the embeddings
-
-## Load Embeddings into Vector Database
-Load the generated embeddings into ChromaDB:
-
-`python cli.py --load --chunk_type char-split`
-
-`python cli.py --load --chunk_type recursive-split`
-
-This will:
-* Connects to your ChromaDB instance
-* Creates a new collection (or clears an existing one)
-* Loads the embeddings and associated metadata into the collection
-
-To view the contents of your Vector Database you can use this [Chroma UI Tool](https://ac215-llm-rag.dlops.io/chromaui). Use Chrome browser for best performance.
-
-## Query the Vector Database
-Test querying the vector database:
-
-`python cli.py --query --chunk_type char-split`
-
-`python cli.py --query --chunk_type recursive-split`
-
-This will:
-* Generate an embedding for a sample query
-* Perform similarity searches in the vector database
-* Apply various types of filters on the queries
-
-## Chat with LLM
-Chat with the LLM using the RAG system:
+## Project Plan & Checklist
+- [x] Vector DB setup (ChromaDB)
+- [x] Data ingestion & chunking (PDFs)
+- [x] Embedding generation (Vertex AI)
+- [x] Load to vector DB
+- [ ] Query & retrieval logic
+- [ ] RAG chat endpoint
+- [ ] Metadata filtering
+- [ ] Backend API (FastAPI/Flask)
+- [ ] Deployment (Render/GCP/Vercel)
+- [ ] Frontend chat UI
+- [ ] Agent architecture
+- [ ] Evaluation pipeline
+- [ ] Documentation & onboarding
 
 
-`python cli.py --chat --chunk_type char-split`
+## Architecture Diagrams
 
-`python cli.py --chat --chunk_type recursive-split`
+**Step 1:**
+<img src="images/llm-rag-flow-1.png" width="800">
 
-This will:
-* Takes a sample query
-* Retrieves relevant context from the vector database
-* Sends the query and context to the LLM
-* Displays the LLM's response
+**Step 2:**
+<img src="images/llm-rag-flow-2.png" width="800">
 
-To test out chat with LLM using RAG, you can use this [Chat Tool](https://ac215-llm-rag.dlops.io/chat). Use Chrome browser for best performance.
-
-## Advanced RAG: Semantic Chunking (Semantic Splitting)
-
-Run the following command to perform chunking -> embedding -> loading the vector db
-
-`python cli.py --chunk --embed --load --chunk_type semantic-split`
-
-This will:
-* Read each text file in the input-datasets/books directory
-* Split the text into chunks using semantic splitting method
-* Save the chunks as JSONL files in the outputs directory
-* Reads each JSONL file of chunks and converts to embeddings and saves them
-* Loads each JSONL file with embeddings into the vector db
-
-## Agents
-
-In this section we will implement and use an AI Agent (Cheese Expert Agent) to perform question answering. AI agents are designed to perform specific tasks, answer questions, and automate processes for users. We will build an cheese agent which can perform the following tasks:
-* Answer a question from a specific book given an author name
-* Answer a question from any book (Similar to our RAG approach above) 
-
-This is the flow of information as compared to the above RAG method:
-<img src="images/llm-rag-flow-3.png"  width="800">
-
-Run the following command to perform
-
-`python cli.py --agent --chunk_type char-split`
-
-This will:
-* Take the user question and pass it to LLM to find the user intent (e.g: `Describe where cheese making is important in Pavlos's book?`)
-* Perform function calling to get all the responses required to answer the question
-* Pass the query and context to the LLM
-* Displays the LLM's response
-
-To test out the Cheese Agent, you can use this [Cheese Agent Tool](https://ac215-llm-rag.dlops.io/agent). Use Chrome browser for best performance.
+## Contributors
+- Jack Webster 
+- Filippo Longhi
+- Cecilia Zheng
+- Asia Capezzuoli
+- Stefan Golic
