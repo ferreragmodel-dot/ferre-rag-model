@@ -2,3 +2,6 @@
 .DS_Store
 /docker-volumes
 /outputs
+/input-datasets/ferre-notes-lessons
+*.pyc
+__pycache__/
