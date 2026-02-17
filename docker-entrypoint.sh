@@ -11,5 +11,8 @@ echo "UV version: $(uv --version)"
 echo "Activating virtual environment..."
 source /.venv/bin/activate
 
-# Keep a shell open
-exec /bin/bash
+echo "Running Ferré archive pipeline: chunk, embed, load"
+python cli.py --chunk --chunk_type recursive-split
+python cli.py --embed --chunk_type recursive-split
+python cli.py --load --chunk_type recursive-split
+echo "Pipeline complete. Container exiting."
