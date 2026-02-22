@@ -255,7 +255,7 @@ def retrieve_chunks(collection, query_embedding, top_k=10, filters=None, contain
     return collection.query(**kwargs)
 
 
-def chunk(method="char-split", source="pdf"):
+def chunk(method="recursive-split", source="pdf"):
     print("chunk()")
 
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -346,7 +346,7 @@ def chunk(method="char-split", source="pdf"):
                     json_file.write(data_df.to_json(orient='records', lines=True))
 
 
-def embed(method="char-split"):
+def embed(method="recursive-split"):
     print("embed()")
 
     # Get the list of chunk files
@@ -383,7 +383,7 @@ def embed(method="char-split"):
             json_file.write(data_df.to_json(orient='records', lines=True))
 
 
-def load(method="char-split"):
+def load(method="recursive-split"):
     print("load()")
 
     # Clear Cache
@@ -425,7 +425,7 @@ def load(method="char-split"):
         load_text_embeddings(data_df, collection)
 
 
-def query(method="char-split", q=None, top_k=10, filters=None, contains=None):  # update query() to accept args + filters
+def query(method="recursive-split", q=None, top_k=10, filters=None, contains=None):  # update query() to accept args + filters
     """
     Perform a similarity search on a Chroma collection using
     an embedded query, optionally applying metadata and lexical filters.
@@ -506,7 +506,7 @@ def query(method="char-split", q=None, top_k=10, filters=None, contains=None):  
     print("\n\nResults:", results)
 
 
-def chat(method="char-split", q=None, top_k=10, filters=None, contains=None):   # update chat() to accept args + filters
+def chat(method="recursive-split", q=None, top_k=10, filters=None, contains=None):   # update chat() to accept args + filters
     """
     Run a simple RAG pipeline: retrieve relevant chunks and
     generate an LLM response using retrieved context.
@@ -576,14 +576,16 @@ def chat(method="char-split", q=None, top_k=10, filters=None, contains=None):   
 
     print("INPUT_PROMPT: ", INPUT_PROMPT)
     response = llm_client.models.generate_content(
-        model=GENERATIVE_MODEL, contents=INPUT_PROMPT
+        model=GENERATIVE_MODEL,
+        contents=INPUT_PROMPT,
+        config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION),
     )
     generated_text = response.text
 
     print("LLM Response:", generated_text)
 
 
-def get(method="char-split"):
+def get(method="recursive-split"):
     print("get()")
 
     # Connect to chroma DB
@@ -601,10 +603,81 @@ def get(method="char-split"):
     )
     print("\n\nResults:", results)
 
-# TODO: Adapt this function for the Ferre Archive Project. 
-# Implement agent function that uses LLM to determine which tools to call, executes them, and feeds results back to LLM for final response
+def agent(method="recursive-split", q=None, top_k=10):
+    """
+    Agentic RAG pipeline: the LLM decides which retrieval tool(s) to call
+    (and with what filters) based on the user query, then generates a final
+    response from the retrieved chunks.
 
-# def agent(method="char-split"):
+    Tools available to the LLM (defined in agent_tools.py):
+      - search_archive:      general semantic search across all documents
+      - search_by_type:      semantic search filtered by document type (lesson/note/archive)
+      - search_by_document:  semantic search within a specific named document
+    """
+    print("agent()")
+
+    # Connect to chroma DB
+    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    collection_name = f"{method}-collection"
+    collection = client.get_collection(name=collection_name)
+
+    query = q or "What does Ferré say about creativity?"
+
+    user_prompt_content = Content(
+        role="user",
+        parts=[Part(text=query)],
+    )
+
+    # Step 1: LLM chooses which tool(s) to call (mode="any" forces a tool call)
+    print("User query:", query)
+    response = llm_client.models.generate_content(
+        model=GENERATIVE_MODEL,
+        contents=user_prompt_content,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_INSTRUCTION,
+            temperature=0,
+            tools=[agent_tools.ferre_expert_tool],
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(mode="any")
+            ),
+        ),
+    )
+    print("LLM tool selection response:", response)
+
+    # Step 2: Execute the selected tool(s) and retrieve chunks
+    function_calls = [
+        part.function_call
+        for part in response.candidates[0].content.parts
+        if part.function_call
+    ]
+    print("Function calls:", function_calls)
+
+    function_responses = agent_tools.execute_function_calls(
+        function_calls, collection, embed_func=generate_query_embedding, top_k=top_k
+    )
+
+    if not function_responses:
+        print("No function responses returned — cannot generate answer.")
+        return
+
+    # Step 3: Feed retrieved chunks back to LLM for final answer
+    final_response = llm_client.models.generate_content(
+        model=GENERATIVE_MODEL,
+        contents=[
+            user_prompt_content,
+            response.candidates[0].content,      # LLM's tool-call turn
+            Content(parts=function_responses),   # tool results
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_INSTRUCTION,
+            tools=[agent_tools.ferre_expert_tool],
+        ),
+    )
+    print("LLM Response:", final_response.text)
+
+
+# Reference: original cheese-book agent (kept for reference)
+# def agent(method="recursive-split"):
 #     print("agent()")
 
 #     # Connect to chroma DB
@@ -692,9 +765,8 @@ def main(args=None):
     if args.get:
         get(method=args.chunk_type)
 
-    # TODO - Adapt this function for the Ferre Archive Project.
-    # if args.agent:
-    #     agent(method=args.chunk_type)
+    if args.agent:
+        agent(method=args.chunk_type, q=args.q, top_k=args.top_k)
 
 
 if __name__ == "__main__":
@@ -737,7 +809,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Chat with LLM Agent",
     )
-    parser.add_argument("--chunk_type", default="char-split",
+    parser.add_argument("--chunk_type", default="recursive-split",
                         help="char-split | recursive-split | semantic-split")
     
     # add new argparse options for metadata filtering

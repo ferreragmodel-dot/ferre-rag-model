@@ -86,6 +86,19 @@ python cli.py --query --chunk_type recursive-split
 ```
 python cli.py --chat --chunk_type recursive-split
 ```
+**Chat with agent:**
+```
+python cli.py --agent --q "What does Ferré say about jewelry?" --chunk_type recursive-split
+
+Ex:
+python cli.py --agent --q "What does Ferré say about jewelry?" --> search archive tool
+
+python cli.py --agent --q "What says Ferré in the lesson about jewelry?" --> search_by_document tool
+
+python cli.py --agent --q ""What do the notes say about jewelry?" --> search_by_type tool
+
+
+```
 
 ## Secrets Management
 - Use `.env.example` as a template for `.env`
