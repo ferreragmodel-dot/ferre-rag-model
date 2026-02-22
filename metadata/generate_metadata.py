@@ -3,9 +3,58 @@ import fitz  # PyMuPDF
 from google import genai
 from google.genai.types import Content
 import json
+import time
+from typing import Optional
 
 PDF_DIR = "input-datasets/ferre-notes-lessons"
 OUTPUT_FILE = "ferre_mappings_llm.json"
+
+# Retry configuration
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 1  # seconds
+MAX_BACKOFF = 32  # seconds
+
+
+def call_llm_with_retry(llm_client, prompt: str, filename: str) -> Optional[str]:
+    """Call LLM with exponential backoff retry logic."""
+    backoff = INITIAL_BACKOFF
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = llm_client.models.generate_content(
+                model="gemini-2.0-flash-001",
+                contents=Content(role="user", parts=[{"text": prompt}])
+            )
+
+            # Parse response
+            text_resp = getattr(response, "text", None)
+            if text_resp is None:
+                try:
+                    text_resp = response.candidates[0].content.parts[0].text
+                except Exception:
+                    text_resp = str(response)
+
+            return text_resp
+
+        except Exception as e:
+            error_str = str(e)
+            is_billing_error = "BILLING_DISABLED" in error_str or "billing" in error_str.lower()
+            is_retryable = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "500" in error_str or "503" in error_str
+
+            if is_billing_error:
+                # Billing errors are not retryable
+                print(f"  Billing error (not retryable): {error_str[:100]}")
+                return None
+
+            if attempt < MAX_RETRIES - 1 and is_retryable:
+                print(f"  Attempt {attempt + 1}/{MAX_RETRIES} failed for {filename}. Retrying in {backoff}s...")
+                time.sleep(backoff)
+                backoff = min(backoff * 2, MAX_BACKOFF)
+            else:
+                print(f"  LLM call failed for {filename}: {error_str[:200]}")
+                return None
+
+    return None
 
 
 def main():
@@ -45,39 +94,48 @@ def main():
             except Exception:
                 text = ""
 
-            prompt = f"""
-Extract the following metadata from this document, if available:
-- Title
-- Year
-- Main topics (comma separated)
-- Author (if available)
-- Type (e.g. lesson, note, article)
+            prompt = f"""Extract the following metadata from this document and return ONLY a valid JSON object, no other text:
+{{
+  "title": "...",
+  "year": "...",
+  "main_topics": "...",
+  "author": "...",
+  "type": "..."
+}}
+
+If a field is not available, use null. Make sure to return only valid JSON.
 
 Document text (first page):
 {text}
 """
 
-            try:
-                response = llm_client.models.generate_content(
-                    model="gemini-2.0-flash-001",
-                    contents=Content(role="user", parts=[{"text": prompt}])
-                )
-            except Exception as e:
-                print(f"LLM call failed for {filename}: {e}")
-                metadata[filename] = {"error": str(e)}
+            text_resp = call_llm_with_retry(llm_client, prompt, filename)
+            if text_resp is None:
+                metadata[filename] = {"error": "Failed after retries"}
                 continue
 
-            # Parse LLM response (assume JSON or structured text)
-            text_resp = getattr(response, "text", None)
-            if text_resp is None:
-                # try candidates
+            # Try to parse as JSON
+            try:
+                parsed_metadata = json.loads(text_resp)
+                metadata[filename] = parsed_metadata
+                print(f"Successfully extracted metadata for {filename}")
+            except json.JSONDecodeError:
+                # If JSON parsing fails, try to extract JSON from the response
                 try:
-                    text_resp = response.candidates[0].content.parts[0].text
-                except Exception:
-                    text_resp = str(response)
-
-            print(f"LLM response for {filename}:\n{text_resp}\n")
-            metadata[filename] = text_resp
+                    # Look for JSON object in the response
+                    import re
+                    json_match = re.search(r'\{[^{}]*\}', text_resp, re.DOTALL)
+                    if json_match:
+                        parsed_metadata = json.loads(json_match.group())
+                        metadata[filename] = parsed_metadata
+                        print(f"Successfully extracted metadata for {filename} (from embedded JSON)")
+                    else:
+                        # Store raw response if no JSON found
+                        metadata[filename] = {"raw_response": text_resp}
+                        print(f"Warning: Could not parse JSON for {filename}, storing raw response")
+                except Exception as parse_error:
+                    metadata[filename] = {"error": f"Failed to parse response: {str(parse_error)}", "raw_response": text_resp}
+                    print(f"Error parsing response for {filename}: {parse_error}")
 
     # Save to JSON
     try:

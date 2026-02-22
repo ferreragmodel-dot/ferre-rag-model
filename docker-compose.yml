@@ -4,11 +4,13 @@ networks:
         external: true
 services:
     llm-rag-cli:
+        build: .
         image: llm-rag-cli
         container_name: llm-rag-cli
         volumes:
             - ../secrets:/secrets
-            - ../llm-rag:/app
+            - ./input-datasets:/app/input-datasets
+            - ./outputs:/app/outputs
         environment:
             GOOGLE_APPLICATION_CREDENTIALS: $GOOGLE_APPLICATION_CREDENTIALS
             GCP_PROJECT: $GCP_PROJECT

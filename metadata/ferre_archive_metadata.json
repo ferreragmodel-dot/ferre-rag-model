@@ -1,41 +1,276 @@
 {
-  "Archivio Fondazione Ferré (Server)": {"filename": "Archivio Fondazione Ferré (Server).pdf", "title": "Archivio Fondazione Ferré (Server)", "year": "", "type": "archive"},
-  "Lesson_Composition and Fashion": {"filename": "Lesson_Composition and Fashion.pdf", "title": "Composition and Fashion", "year": "", "type": "lesson"},
-  "Lesson_Creating a style": {"filename": "Lesson_Creating a style.pdf", "title": "Creating a style", "year": "", "type": "lesson"},
-  "Lesson_Creativity and Working Method": {"filename": "Lesson_Creativity and Working Method.pdf", "title": "Creativity and Working Method", "year": "", "type": "lesson"},
-  "Lesson_Design in Fashion": {"filename": "Lesson_Design in Fashion.pdf", "title": "Design in Fashion", "year": "", "type": "lesson"},
-  "Lesson_Designing the Material": {"filename": "Lesson_Designing the Material.pdf", "title": "Designing the Material", "year": "", "type": "lesson"},
-  "Lesson_Exotic Inspirations": {"filename": "Lesson_Exotic Inspirations.pdf", "title": "Exotic Inspirations", "year": "", "type": "lesson"},
-  "Lesson_Fashion Design and Creativity": {"filename": "Lesson_Fashion Design and Creativity.pdf", "title": "Fashion Design and Creativity", "year": "", "type": "lesson"},
-  "Lesson_Jewelry": {"filename": "Lesson_Jewelry.pdf", "title": "Jewelry", "year": "", "type": "lesson"},
-  "Lesson_Men's Fashion": {"filename": "Lesson_Men's Fashion.pdf", "title": "Men's Fashion", "year": "", "type": "lesson"},
-  "Lesson_Tailor of two cities": {"filename": "Lesson_Tailor of two cities.pdf", "title": "Tailor of two cities", "year": "", "type": "lesson"},
-  "Lesson_The Itinerary of Design": {"filename": "Lesson_The Itinerary of Design.pdf", "title": "The Itinerary of Design", "year": "", "type": "lesson"},
-  "Lesson_The form of Emotions": {"filename": "Lesson_The form of Emotions.pdf", "title": "The form of Emotions", "year": "", "type": "lesson"},
-  "Notes_Accessory": {"filename": "Notes_Accessory.pdf", "title": "Accessory", "year": "", "type": "note"},
-  "Notes_Authenticity": {"filename": "Notes_Authenticity.pdf", "title": "Authenticity", "year": "", "type": "note"},
-  "Notes_China": {"filename": "Notes_China.pdf", "title": "China", "year": "", "type": "note"},
-  "Notes_Colors and Feelings": {"filename": "Notes_Colors and Feelings.pdf", "title": "Colors and Feelings", "year": "", "type": "note"},
-  "Notes_Creative Path": {"filename": "Notes_Creative Path.pdf", "title": "Creative Path", "year": "", "type": "note"},
-  "Notes_Details": {"filename": "Notes_Details.pdf", "title": "Details", "year": "", "type": "note"},
-  "Notes_Dior": {"filename": "Notes_Dior.pdf", "title": "Dior", "year": "", "type": "note"},
-  "Notes_Elegance": {"filename": "Notes_Elegance.pdf", "title": "Elegance", "year": "", "type": "note"},
-  "Notes_Emotions": {"filename": "Notes_Emotions.pdf", "title": "Emotions", "year": "", "type": "note"},
-  "Notes_Fashion and Architecture": {"filename": "Notes_Fashion and Architecture.pdf", "title": "Fashion and Architecture", "year": "", "type": "note"},
-  "Notes_Fashion and Art": {"filename": "Notes_Fashion and Art.pdf", "title": "Fashion and Art", "year": "", "type": "note"},
-  "Notes_Fashion and Ethics": {"filename": "Notes_Fashion and Ethics.pdf", "title": "Fashion and Ethics", "year": "", "type": "note"},
-  "Notes_Fashion": {"filename": "Notes_Fashion.pdf", "title": "Fashion", "year": "", "type": "note"},
-  "Notes_Femininity": {"filename": "Notes_Femininity.pdf", "title": "Femininity", "year": "", "type": "note"},
-  "Notes_India": {"filename": "Notes_India.pdf", "title": "India", "year": "", "type": "note"},
-  "Notes_Inspiration": {"filename": "Notes_Inspiration.pdf", "title": "Inspiration", "year": "", "type": "note"},
-  "Notes_Jewels": {"filename": "Notes_Jewels.pdf", "title": "Jewels", "year": "", "type": "note"},
-  "Notes_Lexicon": {"filename": "Notes_Lexicon.pdf", "title": "Lexicon", "year": "", "type": "note"},
-  "Notes_Materials": {"filename": "Notes_Materials.pdf", "title": "Materials", "year": "", "type": "note"},
-  "Notes_My Woman": {"filename": "Notes_My Woman.pdf", "title": "My Woman", "year": "", "type": "note"},
-  "Notes_Past and Future": {"filename": "Notes_Past and Future.pdf", "title": "Past and Future", "year": "", "type": "note"},
-  "Notes_Reference Figures": {"filename": "Notes_Reference Figures.pdf", "title": "Reference Figures", "year": "", "type": "note"},
-  "Notes_Shapes": {"filename": "Notes_Shapes.pdf", "title": "Shapes", "year": "", "type": "note"},
-  "Notes_Sizes+": {"filename": "Notes_Sizes+.pdf", "title": "Sizes+", "year": "", "type": "note"},
-  "Notes_Values": {"filename": "Notes_Values.pdf", "title": "Values", "year": "", "type": "note"},
-  "Notes_White shirt": {"filename": "Notes_White shirt.pdf", "title": "White shirt", "year": "", "type": "note"}
+  "Notes_Reference Figures.pdf": {
+    "title": "Reference Figures",
+    "year": null,
+    "main_topics": "fashion, elegance, design, luxury",
+    "author": "null",
+    "type": "reference"
+  },
+  "Lesson_Jewelry.pdf": {
+    "title": "Jewelry between East and West, a Balancing of Design and Fantasy Jewelry: My First Love",
+    "year": "1997",
+    "main_topics": "Fashion Design, Jewelry, Craftsmanship, Design, Materials",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Lesson_Men's Fashion.pdf": {
+    "title": "Mens fashion",
+    "year": "1997",
+    "main_topics": "Mens fashion, design, menswear, elegance, materials, color, tradition",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Notes_Dior.pdf": {
+    "title": "CHRISTIAN DIOR",
+    "year": null,
+    "main_topics": "Fashion, Haute Couture, Dior style, design process",
+    "author": "null",
+    "type": "Article"
+  },
+  "Notes_Emotions.pdf": {
+    "title": "EMOTION",
+    "year": null,
+    "main_topics": "Emotion, fashion, design, personal growth, memories, discovery, sharing, museum, culture",
+    "author": null,
+    "type": "essay"
+  },
+  "Notes_Fashion and Ethics.pdf": {
+    "title": "FASHION AND ETHICS",
+    "year": null,
+    "main_topics": "ethics, aesthetics, fashion design",
+    "author": null,
+    "type": "article"
+  },
+  "Notes_Jewels.pdf": {
+    "title": "THE JEWELS",
+    "year": "2023",
+    "main_topics": "jewelry, beauty, self-expression",
+    "author": "Fondazione Gianfranco Ferre",
+    "type": "document"
+  },
+  "Notes_China.pdf": {
+    "title": "CHINA",
+    "year": null,
+    "main_topics": "Travel experiences in China, cultural observations, influence of Eastern culture on design, personal reflections on China's past and present",
+    "author": null,
+    "type": "article"
+  },
+  "Lesson_Creating a style.pdf": {
+    "title": "Creating a style: logic, means, intentions",
+    "year": null,
+    "main_topics": "fashion, style, design, creativity, art, culture, interpretation of life",
+    "author": null,
+    "type": "essay"
+  },
+  "Archivio Fondazione Ferre (Server).pdf": {
+    "title": "Le forme dellemozione. Dare forma alle emozioni",
+    "year": "2007",
+    "main_topics": "design della moda, emozioni, abiti, progettazione formale",
+    "author": "null",
+    "type": "thesis"
+  },
+  "Lesson_The Itinerary of Design.pdf": {
+    "error": "Failed after retries"
+  },
+  "Lesson_Designing the Material.pdf": {
+    "title": "DESIGNING THE MATERIAL",
+    "year": "1998",
+    "main_topics": "creativity, fashion, material, design, technology",
+    "author": "Gianfranco Ferre",
+    "type": "speech"
+  },
+  "Lesson_Design in Fashion.pdf": {
+    "title": "DESIGN IN FASHION",
+    "year": "1996",
+    "main_topics": "fashion design, haute couture, pret-a-porter, industrial fashion",
+    "author": "null",
+    "type": "forum"
+  },
+  "Notes_Lexicon.pdf": {
+    "title": "Lexicon",
+    "year": null,
+    "main_topics": "style's backstory, hallmarks, creative experience, cuts and constructions, proportions, materials, detailing, formal and informal interplay, forms, functions, genres",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Lesson_Composition and Fashion.pdf": {
+    "title": "Composition and fashion",
+    "year": "1997",
+    "main_topics": "fashion design, architecture",
+    "author": null,
+    "type": "seminar"
+  },
+  "Lesson_Fashion Design and Creativity.pdf": {
+    "title": "Fashion Design and Creativity",
+    "year": "1999",
+    "main_topics": "Textile Market Challenges, Fashion Design",
+    "author": "null",
+    "type": "Forum"
+  },
+  "Lesson_Exotic Inspirations.pdf": {
+    "title": "Exotic Inspirations",
+    "year": "2006",
+    "main_topics": "fashion, cultural influences, global intelligence of fashion, East and West mixing, historical fashion",
+    "author": null,
+    "type": "conference paper"
+  },
+  "Notes_Materials.pdf": {
+    "title": "Materials",
+    "year": null,
+    "main_topics": "Materials, fashion, design, alchemy, research, experimentation, textiles",
+    "author": "Gianfranco Ferre (implied)",
+    "type": "article"
+  },
+  "Notes_White shirt.pdf": {
+    "title": "WHITE BLOUSE",
+    "year": null,
+    "main_topics": "fashion, white blouse, style, tradition, innovation, design, elegance",
+    "author": "Gianfranco Ferre",
+    "type": "essay"
+  },
+  "Lesson_Creativity and Working Method.pdf": {
+    "title": "Creativity and Working Method",
+    "year": "2001",
+    "main_topics": "Creativity, Italian culture, fashion, design",
+    "author": "null",
+    "type": "article"
+  },
+  "Notes_Authenticity.pdf": {
+    "title": "Authenticity",
+    "year": "2023",
+    "main_topics": "authenticity, elegance, craftsmanship, materials",
+    "author": "Gianfranco Ferre",
+    "type": "other"
+  },
+  "Notes_Femininity.pdf": {
+    "title": "FEMINITY",
+    "year": "2005",
+    "main_topics": "Femininity, Elegance, Fashion, Sophistication, Women's Fashion",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Notes_Fashion and Architecture.pdf": {
+    "title": "FASHION AND ARCHITECTURE",
+    "year": null,
+    "main_topics": "Fashion, Architecture, Design, Construction, Shapes, Volumes, Proportions, Emotional Factor, Expressive Value, Contemporary Figurative Arts, Motion, Dynamism",
+    "author": null,
+    "type": "article"
+  },
+  "Notes_Sizes+.pdf": {
+    "title": "Sizes+",
+    "year": "2023",
+    "main_topics": "fashion, style, elegance, materials, color",
+    "author": "Gianfranco Ferre",
+    "type": "description"
+  },
+  "Notes_Fashion and Art.pdf": {
+    "title": "Fashion and Art",
+    "year": null,
+    "main_topics": "Fashion, Art, Renaissance, Contemporary Art",
+    "author": null,
+    "type": "article"
+  },
+  "Notes_Creative Path.pdf": {
+    "title": "My Creative Path",
+    "year": null,
+    "main_topics": "creative process, design, architecture, fashion",
+    "author": null,
+    "type": "document"
+  },
+  "Notes_My Woman.pdf": {
+    "title": "My woman",
+    "year": "2023",
+    "main_topics": "femininity, fashion, elegance, style",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Notes_Details.pdf": {
+    "title": "Details",
+    "year": null,
+    "main_topics": "fashion details, buttons, button-jewels, sartorial stitchings/seams, embroideries, luxury",
+    "author": "Gianfranco Ferre (mentioned)",
+    "type": "other"
+  },
+  "Notes_India.pdf": {
+    "title": "INDIA",
+    "year": "1973",
+    "main_topics": "Travel impressions of India, focusing on Bombay (Mumbai) and Delhi, experiences with Indian culture, people, and landscapes.",
+    "author": "Gianfranco Ferre (inferred from copyright)",
+    "type": "Travelogue/Personal Account"
+  },
+  "Lesson_The form of Emotions.pdf": {
+    "title": "The Forms of Emotion. Giving Form to feelings",
+    "year": "2007",
+    "main_topics": "Fashion Design, Emotion, Design Methodology",
+    "author": "null",
+    "type": "Graduate course in Fashion Design"
+  },
+  "Notes_Accessory.pdf": {
+    "title": "Accessory",
+    "year": "2000",
+    "main_topics": "Accessories, fashion, design, materials, functionality",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Notes_Values.pdf": {
+    "title": "PROFESSIONAL VALUES",
+    "year": null,
+    "main_topics": "Values, Creativity, Quality, Uniqueness, Coherence, Culture",
+    "author": "Gianfranco Ferre",
+    "type": "document"
+  },
+  "Notes_Inspiration.pdf": {
+    "title": "Inspiration",
+    "year": "2001",
+    "main_topics": "inspiration, design process, collections",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Notes_Fashion.pdf": {
+    "title": "FASHION",
+    "year": null,
+    "main_topics": "Fashion shows, fashion industry, quality, Italian production",
+    "author": null,
+    "type": "article"
+  },
+  "Lesson_Tailor of two cities.pdf": {
+    "title": "The Tailor of Two Cities",
+    "year": "2003",
+    "main_topics": "fashion, Milan, Paris, culture, haute couture",
+    "author": "Gianfranco Ferre",
+    "type": "article"
+  },
+  "Notes_Colors and Feelings.pdf": {
+    "title": "COLORS AND FEELINGS THE COLORS OF FEELINGS",
+    "year": null,
+    "main_topics": "colors, feelings, fashion, emotions, style",
+    "author": "Gianfranco Ferre (Fondazione Gianfranco Ferre)",
+    "type": "article"
+  },
+  "Notes_Past and Future.pdf": {
+    "title": "PAST AND FUTURE",
+    "year": "2023",
+    "main_topics": "Fashion, creativity, future, elegance, style, evolution, cultural experience, technology, projects",
+    "author": "Gianfranco Ferre",
+    "type": "other"
+  },
+  "Notes_Shapes.pdf": {
+    "title": "SHAPES",
+    "year": null,
+    "main_topics": "fashion design, sketching, garment construction, geometry",
+    "author": null,
+    "type": "article"
+  },
+  "Notes_Elegance.pdf": {
+    "title": "Elegance",
+    "year": null,
+    "main_topics": [
+      "Elegance",
+      "Personality",
+      "Style",
+      "Fashion"
+    ],
+    "author": "Gianfranco Ferre (Fondazione Gianfranco Ferre)",
+    "type": "Other"
+  }
 }

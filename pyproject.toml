@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "app"
 version = "0.1.0"
@@ -7,6 +11,7 @@ requires-python = ">=3.12"
 dependencies = [
     "chromadb>=1.1.0",
     "google-genai>=1.39.1",
+    "google-cloud-aiplatform>=1.47.0",
     "langchain>=0.3.27",
     "langchain-community>=0.3.30",
     "openai>=1.95.1",
@@ -20,3 +25,8 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "tqdm>=4.66.4",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["images*", "metadata*"]
+exclude = ["tests*"]

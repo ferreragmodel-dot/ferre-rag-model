@@ -8,9 +8,10 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 
 **Workflow:**
 1. Chunk Ferré archive PDFs into text segments
-2. Generate embeddings for each chunk (Vertex AI, OpenAI, or other)
-3. Load chunks and embeddings into ChromaDB
-4. Query and chat with the archive using LLM
+2. Generate embeddings for text chunks (Vertex AI, OpenAI, or other)
+3. Generate embeddings for fashion show images by season
+4. Load chunks, embeddings, and images into ChromaDB (separate collections per season)
+5. Query and chat with the archive using LLM (text and images)
 
 **Architecture:**
 - Python CLI pipeline (cli.py)
@@ -21,8 +22,9 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 ## Prerequisites
 - Docker installed
 - Clone this repository
-- Ferré archive PDFs (not included; add to input-datasets/ferre_notes_lessons)
-- GCP service account with Vertex AI access
+- Ferré archive PDFs (add to `input-datasets/ferre_notes_lessons/`)
+- Ferré fashion show images (add to `input-datasets/ferre-designs/ALTA-MODA/[SEASON]/`)
+- GCP service account with Vertex AI access (for text and image embeddings)
 
 ## Secrets & Environment Setup
 - Copy `.env.example` to `.env` and fill in your GCP project ID
@@ -33,7 +35,12 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 ```
 llm-rag/
 ├── input-datasets/
-│   └── ferre_notes_lessons/   # Place Ferré PDFs here
+│   ├── ferre_notes_lessons/   # Place Ferré PDFs here
+│   └── ferre-designs/         # Place fashion show images organized by season
+│       └── ALTA-MODA/
+│           ├── FW1986-87/     # Fall/Winter 1986-87 images
+│           ├── SS1987/        # Spring/Summer 1987 images
+│           └── ...
 ├── outputs/                   # Chunked and embedded data
 ├── secrets/
 │   └── llm-service-account.json
@@ -64,17 +71,25 @@ This will build the Docker image, start ChromaDB, and run the chunk/embed/load p
 ### 2. Manual CLI Usage
 You can run individual steps if needed:
 
-**Chunk PDFs:**
-```
+**Text Processing:**
+```bash
+# Chunk PDFs
 python cli.py --chunk --chunk_type recursive-split
-```
-**Generate Embeddings:**
-```
+
+# Generate embeddings for text chunks
 python cli.py --embed --chunk_type recursive-split
-```
-**Load into ChromaDB:**
-```
+
+# Load text embeddings into ChromaDB
 python cli.py --load --chunk_type recursive-split
+```
+
+**Image Processing:**
+```bash
+# Generate embeddings for fashion show images (organized by season)
+python cli.py --embed-images
+
+# Load image embeddings into ChromaDB (creates separate collections per season)
+python cli.py --load-images
 ```
 
 ### 3. Query and Chat
@@ -103,9 +118,12 @@ python cli.py --chat --chunk_type recursive-split
 ## Project Plan & Checklist
 - [x] Vector DB setup (ChromaDB)
 - [x] Data ingestion & chunking (PDFs)
-- [x] Embedding generation (Vertex AI)
-- [x] Load to vector DB
-- [ ] Query & retrieval logic
+- [x] Text embedding generation (Vertex AI)
+- [x] Image embedding generation (Vertex AI MultiModalEmbeddingModel)
+- [x] Load text embeddings to vector DB
+- [x] Load image embeddings to vector DB (organized by season)
+- [x] Text-based image search
+- [ ] Query & retrieval logic (text)
 - [ ] RAG chat endpoint
 - [ ] Metadata filtering
 - [ ] Backend API (FastAPI/Flask)
