@@ -75,6 +75,4 @@ echo "✓ Pipeline complete"
 echo ""
 echo "Container ready! ChromaDB is available at http://localhost:8000"
 echo "Keeping container running..."
-
-# Keep container alive for interactive use
-exec tail -f /dev/null
+exec /bin/bash

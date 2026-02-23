@@ -12,6 +12,7 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 3. Generate embeddings for fashion show images by season
 4. Load chunks, embeddings, and images into ChromaDB (separate collections per season)
 5. Query and chat with the archive using LLM (text and images)
+6. Agent mode: LLM automatically selects the right retrieval strategy and generates a grounded answer
 
 **Architecture:**
 - Python CLI pipeline (cli.py)
@@ -93,14 +94,48 @@ python cli.py --load-images
 ```
 
 ### 3. Query and Chat
-**Query:**
+**Query** (returns raw retrieved chunks):
+```bash
+python cli.py --query --chunk_type recursive-split --q "What does Ferré say about elegance?"
 ```
-python cli.py --query --chunk_type recursive-split
+
+**Chat** (RAG — retrieves chunks then generates an LLM answer):
+```bash
+python cli.py --chat --chunk_type recursive-split --q "What does Ferré say about elegance?"
 ```
-**Chat:**
+
+Both support optional filters:
+```bash
+# Restrict to a specific document
+python cli.py --chat --q "..." --filter doc="Notes_White shirt"
+
+# Restrict by metadata field (requires --load to have been run after the metadata fix)
+python cli.py --chat --q "..." --filter type=article
+
+# Lexical filter on chunk text
+python cli.py --chat --q "..." --contains "architecture"
+
+# Increase retrieved chunks
+python cli.py --chat --q "..." --top_k 20
 ```
-python cli.py --chat --chunk_type recursive-split
+
+### 4. Agent Mode
+Agent mode uses a two-step agentic pipeline: the LLM first decides which retrieval tool to call (and with what arguments), then generates a grounded answer from the retrieved chunks. No manual filters are needed.
+
+```bash
+python cli.py --agent --q "What did Ferré write about his experience in India?"
+python cli.py --agent --q "What are Ferré's ideas on creativity?"
+python cli.py --agent --q "What did Ferré say about fashion in 1997?"
+python cli.py --agent --top_k 15 --q "How does Ferré describe the relationship between fashion and architecture?"
 ```
+
+**Available retrieval tools (selected automatically by the LLM):**
+
+| Tool | When used | Filter |
+|---|---|---|
+| `search_archive` | General questions across all documents | None |
+| `search_by_document` | Query targets a specific known document | `doc` = filename |
+| `search_by_year` | Query asks about a specific year | `year` = e.g. `"1997"` |
 
 ## Secrets Management
 - Use `.env.example` as a template for `.env`
@@ -123,13 +158,13 @@ python cli.py --chat --chunk_type recursive-split
 - [x] Load text embeddings to vector DB
 - [x] Load image embeddings to vector DB (organized by season)
 - [x] Text-based image search
-- [ ] Query & retrieval logic (text)
-- [ ] RAG chat endpoint
-- [ ] Metadata filtering
+- [x] Query & retrieval logic (text) with metadata and lexical filters
+- [x] RAG chat endpoint
+- [x] Metadata filtering (doc, year, type via `--filter` CLI arg)
+- [x] Agent architecture (automatic tool selection via LLM function calling)
 - [ ] Backend API (FastAPI/Flask)
 - [ ] Deployment (Render/GCP/Vercel)
 - [ ] Frontend chat UI
-- [ ] Agent architecture
 - [ ] Evaluation pipeline
 - [ ] Documentation & onboarding
 
