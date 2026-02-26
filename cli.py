@@ -494,66 +494,6 @@ def generate_image_embeddings(image_paths, dimensionality: int = 256, batch_size
     print(f"\n✓ Generated {len(all_embeddings)} embeddings ({failed_count} failed)")
     return all_embeddings
 
-
-def generate_image_embeddings(image_paths, dimensionality: int = 256, batch_size=1, max_retries=1, retry_delay=5):
-    """Generate embeddings for images using Vertex AI's MultiModalEmbeddingModel."""
-    import vertexai
-
-    # Initialize Vertex AI
-    vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-    model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
-
-    all_embeddings = []
-    failed_count = 0
-
-    for idx, img_path in enumerate(image_paths, 1):
-        try:
-            filename = Path(img_path).name
-
-            # Retry logic with exponential backoff
-            retry_count = 0
-            success = False
-            while retry_count <= max_retries:
-                try:
-                    from vertexai.vision_models import Image
-
-                    # Load image using Vertex AI Image class
-                    image = Image.load_from_file(img_path)
-
-                    # Use the multimodal embedding model to get embeddings
-                    response = model.get_embeddings(
-                        image=image,
-                        dimension=1408
-                    )
-
-                    if response and response.image_embedding:
-                        all_embeddings.append(response.image_embedding)
-                        print(f"  [{idx}/{len(image_paths)}] ✓ {filename}")
-                        success = True
-                        break
-                    else:
-                        raise ValueError(f"No embeddings returned for {filename}")
-
-                except Exception as e:
-                    retry_count += 1
-                    if retry_count > max_retries:
-                        print(f"  [{idx}/{len(image_paths)}] ✗ {filename} - Failed after {max_retries} retries: {str(e)}")
-                        failed_count += 1
-                        break
-
-                    # Calculate delay with exponential backoff
-                    wait_time = retry_delay * (2 ** (retry_count - 1))
-                    print(f"  [{idx}/{len(image_paths)}] Retrying {filename} in {wait_time}s... (attempt {retry_count}/{max_retries})")
-                    time.sleep(wait_time)
-
-        except Exception as e:
-            print(f"  [{idx}/{len(image_paths)}] ✗ Error processing {Path(img_path).name}: {e}")
-            failed_count += 1
-
-    print(f"\n✓ Generated {len(all_embeddings)} embeddings ({failed_count} failed)")
-    return all_embeddings
-
-
 def embed_images(images_folder="input-datasets/ferre-designs"):
     """Generate embeddings for all images organized by season folders."""
     print(f"embed_images() - Processing images from {images_folder}")

@@ -7,7 +7,7 @@ import time
 from typing import Optional
 
 PDF_DIR = "input-datasets/ferre-notes-lessons"
-OUTPUT_FILE = "ferre_mappings_llm.json"
+OUTPUT_FILE = "ferre_archive_metadata.json"
 
 # Retry configuration
 MAX_RETRIES = 3
