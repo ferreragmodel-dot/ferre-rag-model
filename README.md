@@ -75,10 +75,10 @@ When `docker-shell.sh` launches the container, `docker-entrypoint.sh` runs autom
 
 | Step | Skip condition | What is checked |
 |---|---|---|
-| **Chunk** | `outputs/chunks*.jsonl` already exists | Presence of any chunk file in `outputs/` |
-| **Embed (text)** | `outputs/embeddings*.jsonl` already exists | Presence of any text embedding file in `outputs/` |
-| **Load text** | At least one non-image collection exists in ChromaDB | ChromaDB is queried at startup; any collection whose name does **not** start with `images-` counts |
-| **Load images** | At least one image collection exists in ChromaDB | ChromaDB is queried at startup; any collection whose name starts with `images-` counts |
+| **Chunk** | `outputs/chunks*.jsonl` already exists | Presence of any chunk file in `outputs/`. If nothing is present, "python cli.py --chunk" is run (so chunking with default method defined in cli.py) |
+| **Embed (text)** | `outputs/embeddings*.jsonl` already exists | Presence of any text embedding file in `outputs/` . If nothing is present, "python cli.py --embed" is run (so embedding with default method defined in cli.py)|
+| **Load text** | At least one non-image collection exists in ChromaDB | ChromaDB is queried at startup; any collection whose name does **not** start with `images-` counts. If no non-image collection exists, "python cli.py --load" is run (so loading with default method defined in cli.py)|
+| **Load images** | At least one image collection exists in ChromaDB | ChromaDB is queried at startup; any collection whose name starts with `images-` counts. If no image collection are present,  "python cli.py --load-images" is run (unique, not multiple methods possible) |
 
 > **Note:** the checks are intentionally generic — they verify whether *any* data of that type is present, not whether it matches a specific `--chunk_type`. This means that if you want to ensure a particular chunk type (e.g. `char-split` or `semantic-split`) is chunked, embedded, and loaded, the automatic skip may trigger falsely because a previous run with a different type already populated the outputs.
 >
