@@ -69,6 +69,27 @@ llm-rag/
 ```
 This will build the Docker image, start ChromaDB, and run the chunk/embed/load pipeline automatically.
 
+### How conditional startup works
+
+When `docker-shell.sh` launches the container, `docker-entrypoint.sh` runs automatically and skips steps that have already been completed. Each step is checked independently:
+
+| Step | Skip condition | What is checked |
+|---|---|---|
+| **Chunk** | `outputs/chunks*.jsonl` already exists | Presence of any chunk file in `outputs/` |
+| **Embed (text)** | `outputs/embeddings*.jsonl` already exists | Presence of any text embedding file in `outputs/` |
+| **Load text** | At least one non-image collection exists in ChromaDB | ChromaDB is queried at startup; any collection whose name does **not** start with `images-` counts |
+| **Load images** | At least one image collection exists in ChromaDB | ChromaDB is queried at startup; any collection whose name starts with `images-` counts |
+
+> **Note:** the checks are intentionally generic — they verify whether *any* data of that type is present, not whether it matches a specific `--chunk_type`. This means that if you want to ensure a particular chunk type (e.g. `char-split` or `semantic-split`) is chunked, embedded, and loaded, the automatic skip may trigger falsely because a previous run with a different type already populated the outputs.
+>
+> In that case, once the container has started and you are at the `/bin/bash` prompt, simply re-run the relevant steps manually:
+> ```bash
+> # Example: force chunking, embedding and loading for a specific type
+> python cli.py --chunk --chunk_type char-split
+> python cli.py --embed --chunk_type char-split
+> python cli.py --load --chunk_type char-split
+> ```
+
 ### 2. Manual CLI Usage
 You can run individual steps if needed:
 

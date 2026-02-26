@@ -53,23 +53,63 @@ if [ $SKIP_CHUNK -eq 0 ] || [ $SKIP_EMBED -eq 0 ]; then
 
     if [ $SKIP_CHUNK -eq 0 ]; then
         echo "→ Chunking documents..."
-        python cli.py --chunk --chunk_type $CHUNK_TYPE || echo "⚠ Chunk step failed"
+        python cli.py --chunk || echo "⚠ Chunk step failed"
     fi
 
     if [ $SKIP_EMBED -eq 0 ]; then
         echo "→ Generating embeddings..."
-        python cli.py --embed --chunk_type $CHUNK_TYPE || echo "⚠ Embed step failed"
+        python cli.py --embed || echo "⚠ Embed step failed"
     fi
 else
     echo "✓ All pipeline outputs already exist, skipping chunk and embed"
 fi
 
-# Always load embeddings into ChromaDB
-echo "→ Loading text embeddings to ChromaDB..."
-python cli.py --load || echo "⚠ Load text embeddings step failed"
+# Check if ChromaDB collections already exist (tied to the persistent volume lifecycle)
+echo ""
+echo "Checking ChromaDB collection status..."
+SKIP_LOAD_TEXT=$(python -c "
+import chromadb
+try:
+    c = chromadb.HttpClient(host='llm-rag-chromadb', port=8000)
+    cols = [col.name for col in c.list_collections()]
+    has_text = any(not col.startswith('images-') for col in cols)
+    print('1' if has_text else '0')
+except Exception:
+    print('0')
+" 2>/dev/null)
 
-echo "→ Loading image embeddings to ChromaDB..."
-python cli.py --load-images || echo "⚠ Load image embeddings step failed"
+SKIP_LOAD_IMAGES=$(python -c "
+import chromadb
+try:
+    c = chromadb.HttpClient(host='llm-rag-chromadb', port=8000)
+    cols = [col.name for col in c.list_collections()]
+    print('1' if any(col.startswith('images-') for col in cols) else '0')
+except Exception:
+    print('0')
+" 2>/dev/null)
+
+if [ "$SKIP_LOAD_TEXT" = "1" ]; then
+    echo "✓ Text collection already exists in ChromaDB, skipping text load"
+else
+    echo "✗ Text collection not found in ChromaDB, will load text embeddings"
+fi
+
+if [ "$SKIP_LOAD_IMAGES" = "1" ]; then
+    echo "✓ Image collections already exist in ChromaDB, skipping image load"
+else
+    echo "✗ Image collections not found in ChromaDB, will load image embeddings"
+fi
+
+# Load embeddings into ChromaDB conditionally
+if [ "$SKIP_LOAD_TEXT" = "0" ]; then
+    echo "→ Loading text embeddings to ChromaDB..."
+    python cli.py --load || echo "⚠ Load text embeddings step failed"
+fi
+
+if [ "$SKIP_LOAD_IMAGES" = "0" ]; then
+    echo "→ Loading image embeddings to ChromaDB..."
+    python cli.py --load-images || echo "⚠ Load image embeddings step failed"
+fi
 
 echo "✓ Pipeline complete"
 echo ""
