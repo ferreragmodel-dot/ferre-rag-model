@@ -509,15 +509,29 @@ def embed_images(images_folder="input-datasets/ferre-designs"):
                 img_path = os.path.join(root, file)
 
                 # Extract season from folder path
-                # e.g., "input-datasets/ferre-designs/ALTA-MODA/FW1986-87" -> "FW1986-87"
+                # Common structures handled:
+                #  - ALTA-MODA/FW1986-1987/<category>/image.jpg  -> season = FW1986-1987
+                #  - FW1986-1987/<category>/image.jpg             -> season = FW1986-1987
+                # Fallback to the parent folder when no season-like part is found.
                 rel_path = os.path.relpath(img_path, images_folder)
                 path_parts = rel_path.split(os.sep)
 
-                # Use the second-to-last folder as season (e.g., "ALTA-MODA" or folder structure)
-                if len(path_parts) >= 2:
-                    season_folder = path_parts[-2]  # Parent folder
-                else:
-                    season_folder = "unknown"
+                season_folder = "unknown"
+                # Prefer explicit season tokens like FW... or SS...
+                for p in path_parts:
+                    if re.match(r'^(FW|SS)\d', p, re.IGNORECASE):
+                        season_folder = p
+                        break
+
+                if season_folder == "unknown":
+                    # If top-level grouping like ALTA-MODA exists, use the next part as season
+                    if len(path_parts) >= 2 and path_parts[0].upper() == 'ALTA-MODA':
+                        season_folder = path_parts[1]
+                    # Otherwise prefer the immediate parent folder (category's parent may be season)
+                    elif len(path_parts) >= 2:
+                        season_folder = path_parts[-2]
+                    elif len(path_parts) == 1:
+                        season_folder = path_parts[0]
 
                 if season_folder not in seasons_data:
                     seasons_data[season_folder] = []
@@ -543,9 +557,10 @@ def embed_images(images_folder="input-datasets/ferre-designs"):
         data = []
         for img_path, embedding in zip(image_files, embeddings):
             filename = os.path.basename(img_path)
+            rel_path = os.path.relpath(img_path, images_folder)
 
             data.append({
-                "id": hashlib.md5(img_path.encode()).hexdigest(),
+                "id": hashlib.md5(rel_path.encode()).hexdigest(),
                 "filename": filename,
                 "path": img_path,
                 "season": season_folder,
