@@ -1,6 +1,7 @@
 import os
 from google import genai
 from google.genai.types import Content
+from google.genai.types import Part
 import json
 import time
 from typing import Optional, Dict, Any
@@ -21,8 +22,19 @@ ASSET_FASHION_SHOW = "fashion_show_photos"
 ASSET_TECHNICAL_DRAWINGS = "technical_drawings"
 # TODO: add other asset types here
 
+def guess_mime(ext: str) -> str:
+    ext = ext.lower()
+    if ext in [".jpg", ".jpeg"]:
+        return "image/jpeg"
+    if ext == ".png":
+        return "image/png"
+    if ext == ".webp":
+        return "image/webp"
+    if ext == ".gif":
+        return "image/gif"
+    return "application/octet-stream"
 
-def call_llm_with_retry(llm_client, prompt: str, key: str) -> Optional[str]:
+def call_llm_with_retry(llm_client, prompt: str, key: str, image_bytes: bytes, mime_type: str) -> Optional[str]:
     """Call LLM with exponential backoff retry logic."""
     backoff = INITIAL_BACKOFF
 
@@ -30,9 +42,14 @@ def call_llm_with_retry(llm_client, prompt: str, key: str) -> Optional[str]:
         try:
             response = llm_client.models.generate_content(
                 model="gemini-2.0-flash-001",
-                contents=Content(role="user", parts=[{"text": prompt}]),
+                contents=Content(
+                role="user",
+                parts=[
+                    {"text": prompt},
+                    Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                    ],      
+                ),
             )
-
             text_resp = getattr(response, "text", None)
             if text_resp is None:
                 try:
@@ -288,8 +305,13 @@ def main():
 
             known_ctx = parse_known_context(rel_path, asset_type)
             prompt = build_prompt(asset_type, rel_path, known_ctx)
+            
+            with open(abs_path, "rb") as f:
+                image_bytes = f.read()
+            mime_type = guess_mime(ext)
 
-            text_resp = call_llm_with_retry(llm_client, prompt, key)
+            text_resp = call_llm_with_retry(llm_client, prompt, key, image_bytes=image_bytes, mime_type=mime_type)
+
             if text_resp is None:
                 metadata_by_type[asset_type][key] = {"error": "Failed after retries", **known_ctx}
                 continue
