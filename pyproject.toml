@@ -24,6 +24,7 @@ dependencies = [
     "uvicorn>=0.29.0",
     "python-dotenv>=1.0.1",
     "tqdm>=4.66.4",
+    "tiktoken>=0.7.0",
 ]
 
 [tool.setuptools.packages.find]

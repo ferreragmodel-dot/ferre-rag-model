@@ -9,6 +9,7 @@ import chromadb
 import fitz  # PyMuPDF for PDF text extraction
 import base64
 import re
+import tiktoken
 from pathlib import Path
 
 # Vertex AI
@@ -22,6 +23,15 @@ from vertexai.vision_models import MultiModalEmbeddingModel
 from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from semantic_splitter import SemanticChunker
 import agent_tools
+
+# Token-based chunking: use cl100k_base (GPT-4 tokenizer) as a good approximation
+# for text-embedding-004 (Google SentencePiece). Chunking defaults are expressed in tokens.
+_tokenizer = tiktoken.get_encoding("cl100k_base")
+CHUNK_SIZE_TOKENS = 350       # target: 300-400 tokens per chunk for Ferré archive texts
+CHUNK_OVERLAP_TOKENS = 50     # ~14% overlap to preserve context across boundaries
+
+def _token_len(text: str) -> int:
+    return len(_tokenizer.encode(text))
 
 # Setup
 GCP_PROJECT = os.environ["GCP_PROJECT"]
@@ -336,15 +346,21 @@ def chunk(method="recursive-split", source="pdf"):
 
             text_chunks = None
             if method == "char-split":
-                chunk_size = 350
-                chunk_overlap = 20
                 text_splitter = CharacterTextSplitter(
-                    chunk_size=chunk_size, chunk_overlap=chunk_overlap, separator='', strip_whitespace=False)
+                    chunk_size=CHUNK_SIZE_TOKENS,
+                    chunk_overlap=CHUNK_OVERLAP_TOKENS,
+                    separator='',
+                    strip_whitespace=False,
+                    length_function=_token_len,
+                )
                 text_chunks = text_splitter.create_documents([input_text])
                 text_chunks = [d.page_content for d in text_chunks]
             elif method == "recursive-split":
-                chunk_size = 350
-                text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size)
+                text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+                    encoding_name="cl100k_base",
+                    chunk_size=CHUNK_SIZE_TOKENS,
+                    chunk_overlap=CHUNK_OVERLAP_TOKENS,
+                )
                 text_chunks = text_splitter.create_documents([input_text])
                 text_chunks = [d.page_content for d in text_chunks]
             elif method == "semantic-split":
@@ -373,15 +389,21 @@ def chunk(method="recursive-split", source="pdf"):
 
             text_chunks = None
             if method == "char-split":
-                chunk_size = 350
-                chunk_overlap = 20
                 text_splitter = CharacterTextSplitter(
-                    chunk_size=chunk_size, chunk_overlap=chunk_overlap, separator='', strip_whitespace=False)
+                    chunk_size=CHUNK_SIZE_TOKENS,
+                    chunk_overlap=CHUNK_OVERLAP_TOKENS,
+                    separator='',
+                    strip_whitespace=False,
+                    length_function=_token_len,
+                )
                 text_chunks = text_splitter.create_documents([input_text])
                 text_chunks = [d.page_content for d in text_chunks]
             elif method == "recursive-split":
-                chunk_size = 350
-                text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size)
+                text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+                    encoding_name="cl100k_base",
+                    chunk_size=CHUNK_SIZE_TOKENS,
+                    chunk_overlap=CHUNK_OVERLAP_TOKENS,
+                )
                 text_chunks = text_splitter.create_documents([input_text])
                 text_chunks = [d.page_content for d in text_chunks]
             elif method == "semantic-split":

@@ -90,6 +90,75 @@ When `docker-shell.sh` launches the container, `docker-entrypoint.sh` runs autom
 > python cli.py --load --chunk_type char-split
 > ```
 
+### Chunking parameters
+
+All chunking methods measure `chunk_size` and `chunk_overlap` in **tokens** (not characters), using the `cl100k_base` tokenizer (GPT-4) as a close approximation for `text-embedding-004`. This ensures consistent semantic density regardless of the content and avoids silently exceeding the embedding model's 2048-token input limit.
+
+The defaults are defined at the top of [cli.py](cli.py) and can be changed there:
+
+```python
+CHUNK_SIZE_TOKENS = 350       # tokens per chunk
+CHUNK_OVERLAP_TOKENS = 50     # tokens of overlap between consecutive chunks (~14%)
+```
+
+**Target chunk size guide:**
+
+| Range (tokens) | Approx. characters | When to use |
+|---|---|---|
+| 128–256 | ~500–1000 | High-precision retrieval, short factual sentences |
+| **256–512** | **~1000–2000** | **Recommended balance for RAG — good for Ferré archive texts** |
+| 512–1024 | ~2000–4000 | Long structured documents, more context per retrieved chunk |
+
+For the Ferré archive (lecture notes, essays with dense paragraphs), **300–400 tokens** with **overlap 50–75 tokens** is a good starting point. After changing the constants, re-run the full pipeline for that chunk type:
+
+```bash
+python cli.py --chunk --chunk_type recursive-split
+python cli.py --embed  --chunk_type recursive-split
+python cli.py --load   --chunk_type recursive-split
+```
+
+> `semantic-split` does not use these constants — it determines boundaries from semantic similarity between sentences and produces variable-length chunks by design.
+
+### Embedding parameters
+
+The two relevant constants in [cli.py](cli.py) are:
+
+```python
+EMBEDDING_MODEL = "text-embedding-004"
+EMBEDDING_DIMENSION = 256
+```
+
+**`EMBEDDING_MODEL`**
+
+| Model | Best for | Notes |
+|---|---|---|
+| `text-embedding-004` | English text | Default. Strong general-purpose model. |
+| `text-multilingual-embedding-002` | Italian or mixed-language text | Recommended if Ferré archive PDFs are in Italian — handles 100+ languages natively, same API interface |
+
+If the archive texts are in Italian, changing to `text-multilingual-embedding-002` will produce meaningfully better embeddings. The change is a one-liner in [cli.py](cli.py); then the full pipeline (embed + load) must be re-run.
+
+**`EMBEDDING_DIMENSION`**
+
+Both models support Matryoshka representations — the output vector can be truncated to a lower dimension without retraining, trading some quality for smaller storage and faster search.
+
+| Dimension | Storage per chunk | Quality | When to use |
+|---|---|---|---|
+| 128 | minimal | lower | Not recommended for this use case |
+| **256** | small | good | **Current default** — acceptable for prototyping |
+| **512** | moderate | better | **Recommended upgrade** — meaningful quality gain at modest cost |
+| 768 | full | best | Maximum quality; use if storage is not a concern |
+
+For the Ferré archive, **512** is a practical improvement over 256 with no code changes beyond the constant. After changing either constant, delete existing embedding files in `outputs/` and re-run `--embed` and `--load`.
+
+**Image embeddings**
+
+Image embeddings use a separate model and are independent from the text embedding constants above:
+
+- **Model:** `multimodalembedding@001` (Vertex AI) — dedicated multimodal model that embeds both images and text in the same vector space, enabling text-to-image similarity search
+- **Dimension:** hardcoded `1408` in [cli.py](cli.py) — does **not** use `EMBEDDING_DIMENSION`. 1408 is the maximum available for this model (supports 128, 256, 512, 1408)
+
+> Because text embeddings (`text-embedding-004`, 256-dim) and image embeddings (`multimodalembedding@001`, 1408-dim) live in different vector spaces, they cannot be searched together in a single query. To search images via a text query, the query must be embedded with `multimodalembedding@001` — not `text-embedding-004`.
+
 ### 2. Manual CLI Usage
 You can run individual steps if needed:
 
