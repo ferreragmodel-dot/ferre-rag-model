@@ -101,25 +101,10 @@ else
 fi
 
 # Load embeddings into ChromaDB conditionally, per chunking method
-for m in "${METHODS[@]}"; do
-    exists=$(python - <<PY
-import chromadb, sys
-m = "${m}"
-try:
-    c = chromadb.HttpClient(host='llm-rag-chromadb', port=8000)
-    cols = [col.name for col in c.list_collections()]
-    print('1' if f"{m}-collection" in cols else '0')
-except Exception:
-    print('0')
-PY
-)
-    if [ "$exists" = "0" ]; then
-        echo "→ Loading text embeddings for method: ${m}..."
-        python cli.py --load --chunk_type="${m}" || echo "⚠ Load text embeddings for ${m} failed"
-    else
-        echo "→ Skipping load for ${m} (already exists)"
-    fi
-done
+if [ "$SKIP_LOAD_TEXT" = "0" ]; then
+    echo "→ Loading text embeddings to ChromaDB..."
+    python cli.py --load || echo "⚠ Load text embeddings step failed"
+fi
 
 if [ "$SKIP_LOAD_IMAGES" = "0" ]; then
     echo "→ Loading image embeddings to ChromaDB..."
@@ -129,5 +114,14 @@ fi
 echo "✓ Pipeline complete"
 echo ""
 echo "Container ready! ChromaDB is available at http://localhost:8000"
-echo "Keeping container running..."
-exec /bin/bash
+
+args="$@"
+echo "Arguments: $args"
+
+if [[ -z ${args} ]]; then
+    echo "No arguments provided, opening interactive shell..."
+    exec /bin/bash
+else
+    echo "Running python with uv: $args"
+    exec uv run python $args
+fi

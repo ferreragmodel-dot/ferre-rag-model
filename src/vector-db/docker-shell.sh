@@ -5,10 +5,10 @@ set -e
 
 # Set vairables
 export BASE_DIR=$(pwd)
-export PERSISTENT_DIR=$(pwd)/../persistent-folder/
-export SECRETS_DIR=$(pwd)/../secrets/
-export GCP_PROJECT="${GCP_PROJECT:-your-gcp-project}" 
-export GOOGLE_APPLICATION_CREDENTIALS="${GOOGLE_APPLICATION_CREDENTIALS:-/secrets/llm-service-account.json}"
+export PERSISTENT_DIR=$(pwd)/../../../persistent-folder/
+export SECRETS_DIR=$(pwd)/../../../secrets/
+export GCP_PROJECT="project-296db417-a890-492a-80a" # CHANGE TO YOUR PROJECT ID
+export GOOGLE_APPLICATION_CREDENTIALS="/home/app/.config/gcloud/application_default_credentials.json"
 export IMAGE_NAME="llm-rag-cli"
 
 
