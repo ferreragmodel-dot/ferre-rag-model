@@ -1,0 +1,13 @@
+# Virtual environments (most heavy)
+.venv/
+venv/
+node_modules/
+
+# Cache
+**/__pycache__/
+*.py[cod]
+
+# Git and configurations
+.git/
+.gitignore
+.vscode/
