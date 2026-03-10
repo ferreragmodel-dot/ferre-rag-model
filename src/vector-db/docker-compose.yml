@@ -9,7 +9,7 @@ services:
         container_name: llm-rag-cli
         volumes:
             - .:/app
-            - ${APPDATA}/gcloud:/home/app/.config/gcloud
+            - ../../../secrets:/secrets
             - ./input-datasets:/app/input-datasets
             - ./outputs:/app/outputs
             - ./metadata:/app/metadata

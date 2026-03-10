@@ -30,24 +30,23 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 - GCP service account with Vertex AI access
 
 ## Secrets & Environment Setup
-- Copy `.env.example` to `.env` and fill in your GCP project ID
-- Obtain a GCP service account key (JSON) and place it in `secrets/llm-service-account.json`
-- **Never commit .env or service account files to the repo**
+- Obtain a GCP service account key (JSON) and place it in `secrets/llm-service-account.json` (outside the repo)
+- Set `GCP_PROJECT` and `GOOGLE_APPLICATION_CREDENTIALS` in each `docker-shell.sh`
+- **Never commit service account files to the repo**
 
 ## Setup GCP Service Account
 1. Go to [GCP Console](https://console.cloud.google.com/home/dashboard)
 2. Create a service account with "Vertex AI User" and "Storage Admin" roles
-3. Download the JSON key and place it in `secrets/llm-service-account.json`
-4. Set `GOOGLE_APPLICATION_CREDENTIALS` in `.env` to point to this file
+3. Download the JSON key and place it in `secrets/llm-service-account.json` (next to the repo, not inside it)
+4. In each `docker-shell.sh`, set `GCP_PROJECT` to your project ID and `GOOGLE_APPLICATION_CREDENTIALS` to `/secrets/llm-service-account.json`
 
 ## Folder Structure
 ```
-ferre-rag-model/
-├── secrets/
+Desktop/  (or wherever you cloned the repo)
+├── secrets/                        # Outside the repo — never committed
 │   └── llm-service-account.json
-├── .env.example
-├── .env
-└── src/
+└── ferre-rag-model/
+    └── src/
     ├── vector-db/                  # Offline pipeline: chunk, embed, load
     │   ├── input-datasets/
     │   │   ├── ferre_notes_lessons/   # Place Ferré PDFs here

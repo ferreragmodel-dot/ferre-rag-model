@@ -10,7 +10,7 @@ export IMAGE_NAME="llm-rag-api-service"
 export BASE_DIR=$(pwd)
 export SECRETS_DIR=$(pwd)/../../../secrets/
 export PERSISTENT_DIR=$(pwd)/../../../persistent-folder/
-export GCP_PROJECT="project-296db417-a890-492a-80a" # CHANGE TO YOUR PROJECT ID
+export GCP_PROJECT="idyllic-psyche-487701-u7" # CHANGE TO YOUR PROJECT ID
 export CHROMADB_HOST="llm-rag-chromadb"
 export CHROMADB_PORT=8000
 
@@ -25,10 +25,9 @@ docker run --rm --name $IMAGE_NAME -ti \
 -v "$BASE_DIR":/app \
 -v "$SECRETS_DIR":/secrets \
 -v "$PERSISTENT_DIR":/persistent \
--v "${APPDATA}/gcloud:/home/app/.config/gcloud" \
 -p 9000:9000 \
 -e DEV=1 \
--e GOOGLE_APPLICATION_CREDENTIALS=/home/app/.config/gcloud/application_default_credentials.json \
+-e GOOGLE_APPLICATION_CREDENTIALS=/secrets/llm-service-account.json \
 -e GCP_PROJECT=$GCP_PROJECT \
 -e CHROMADB_HOST=$CHROMADB_HOST \
 -e CHROMADB_PORT=$CHROMADB_PORT \
