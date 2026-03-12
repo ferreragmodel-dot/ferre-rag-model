@@ -276,49 +276,6 @@ def retrieve_chunks(collection, query_embedding, top_k=10, filters=None, contain
 
 
 
-def load_image_embeddings(df, collection, batch_size=500):
-    """Load image embeddings into ChromaDB collection."""
-
-    # Use the 'id' column directly if it exists, otherwise generate from filename
-    if "id" not in df.columns:
-        df["id"] = df["filename"].astype(str)
-
-    # Process data in batches
-    total_inserted = 0
-    for i in range(0, df.shape[0], batch_size):
-        # Create a copy of the batch and reset the index
-        batch = df.iloc[i:i+batch_size].copy().reset_index(drop=True)
-
-        ids = batch["id"].tolist()
-        embeddings = batch["embedding"].tolist()
-
-        # Build metadata from available columns
-        metadatas = []
-        for idx, row in batch.iterrows():
-            item_meta = {}
-            if "filename" in row:
-                item_meta["filename"] = str(row["filename"])
-            if "path" in row:
-                item_meta["path"] = str(row["path"])
-            if "season" in row:
-                item_meta["season"] = str(row["season"])
-            metadatas.append(item_meta)
-
-        # Use filename as document text (for reference/search)
-        documents = batch["filename"].astype(str).tolist() if "filename" in batch.columns else ids
-
-        collection.add(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas,
-            embeddings=embeddings
-        )
-        total_inserted += len(batch)
-        print(f"  Inserted {total_inserted} items...")
-
-    print(
-        f"  Finished inserting {total_inserted} items into collection '{collection.name}'")
-
 
 def chunk(method="recursive-split", source="pdf"):
     print("chunk()")
@@ -694,7 +651,21 @@ def load_fashion_show_photos():
         data_df = pd.read_json(jsonl_file, lines=True)
         print(f"  Shape: {data_df.shape}")
 
-        load_image_embeddings(data_df, collection)
+        if "id" not in data_df.columns:
+            data_df["id"] = data_df["filename"].astype(str)
+
+        batch_size = 500
+        for i in range(0, data_df.shape[0], batch_size):
+            batch = data_df.iloc[i:i+batch_size].copy().reset_index(drop=True)
+            ids = batch["id"].tolist()
+            embeddings = batch["embedding"].tolist()
+            metadatas = [
+                {k: str(row[k]) for k in ("filename", "path", "season") if k in row}
+                for _, row in batch.iterrows()
+            ]
+            documents = batch["filename"].astype(str).tolist() if "filename" in batch.columns else ids
+            collection.add(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+
         total_loaded += len(data_df)
         print(f"  ✓ Loaded {len(data_df)} images")
 
