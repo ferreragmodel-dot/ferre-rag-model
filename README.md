@@ -25,7 +25,7 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 ## Prerequisites
 - Docker installed
 - Clone this repository
-- Ferré archive PDFs (add to `src/vector-db/input-datasets/ferre_notes_lessons/`)
+- Ferré archive PDFs (add to `src/vector-db/input-datasets/ferre-notes-lessons/`)
 - Ferré fashion show images (add to `src/vector-db/input-datasets/ferre-designs/ALTA-MODA/[SEASON]/`)
 - GCP service account with Vertex AI access
 
@@ -49,7 +49,7 @@ Desktop/  (or wherever you cloned the repo)
     └── src/
     ├── vector-db/                  # Offline pipeline: chunk, embed, load
     │   ├── input-datasets/
-    │   │   ├── ferre_notes_lessons/   # Place Ferré PDFs here
+    │   │   ├── ferre-notes-lessons/   # Place Ferré PDFs here
     │   │   └── ferre-designs/         # Fashion show images organized by season
     │   │       └── ALTA-MODA/
     │   │           ├── FW1986-87/
@@ -176,11 +176,13 @@ python cli.py --embed --chunk_type recursive-split
 python cli.py --load --chunk_type recursive-split
 ```
 
-**Image Processing:**
+**Image Processing (fashion show photos):**
 ```bash
-python cli.py --embed-images
-python cli.py --load-images
+python cli.py --embed-fashion-show-photos
+python cli.py --load-fashion-show-photos
 ```
+
+This generates one `.jsonl` file per season (e.g. `embeddings-images-FW1986-1987-fashion-show-photos.jsonl`) and loads them all into a single ChromaDB collection `images-fashion-show-photos`. Season is preserved as metadata on each record. Other image types (e.g. technical sheets, drawings) will use separate commands and collections when added.
 
 ### Query and Chat (CLI)
 

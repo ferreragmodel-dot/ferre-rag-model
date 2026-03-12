@@ -516,9 +516,9 @@ def generate_image_embeddings(image_paths, dimensionality: int = 256, batch_size
     print(f"\n✓ Generated {len(all_embeddings)} embeddings ({failed_count} failed)")
     return all_embeddings
 
-def embed_images(images_folder="input-datasets/ferre-designs"):
-    """Generate embeddings for all images organized by season folders."""
-    print(f"embed_images() - Processing images from {images_folder}")
+def embed_fashion_show_photos(images_folder="input-datasets/ferre-designs"):
+    """Generate embeddings for fashion show photos organized by season folders."""
+    print(f"embed_fashion_show_photos() - Processing images from {images_folder}")
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
     # Find all image files and group by season folder
@@ -526,34 +526,22 @@ def embed_images(images_folder="input-datasets/ferre-designs"):
     seasons_data = {}  # {season_key: [image_paths]}
 
     for root, dirs, files in os.walk(images_folder):
+        # Only process images inside a "fashion-show-photos" subfolder
+        path_parts = os.path.relpath(root, images_folder).split(os.sep)
+        if "fashion-show-photos" not in path_parts:
+            continue
+
         for file in files:
             if any(file.lower().endswith(ext.replace('*', '')) for ext in image_extensions):
                 img_path = os.path.join(root, file)
 
-                # Extract season from folder path
-                # Common structures handled:
-                #  - ALTA-MODA/FW1986-1987/<category>/image.jpg  -> season = FW1986-1987
-                #  - FW1986-1987/<category>/image.jpg             -> season = FW1986-1987
-                # Fallback to the parent folder when no season-like part is found.
-                rel_path = os.path.relpath(img_path, images_folder)
-                path_parts = rel_path.split(os.sep)
-
+                # Extract season: look for FW.../SS... token in path
+                # Expected structure: ALTA-MODA/{season}/fashion-show-photos/image.jpg
                 season_folder = "unknown"
-                # Prefer explicit season tokens like FW... or SS...
                 for p in path_parts:
                     if re.match(r'^(FW|SS)\d', p, re.IGNORECASE):
                         season_folder = p
                         break
-
-                if season_folder == "unknown":
-                    # If top-level grouping like ALTA-MODA exists, use the next part as season
-                    if len(path_parts) >= 2 and path_parts[0].upper() == 'ALTA-MODA':
-                        season_folder = path_parts[1]
-                    # Otherwise prefer the immediate parent folder (category's parent may be season)
-                    elif len(path_parts) >= 2:
-                        season_folder = path_parts[-2]
-                    elif len(path_parts) == 1:
-                        season_folder = path_parts[0]
 
                 if season_folder not in seasons_data:
                     seasons_data[season_folder] = []
@@ -591,7 +579,7 @@ def embed_images(images_folder="input-datasets/ferre-designs"):
             })
 
         # Save embeddings for this season
-        output_file = os.path.join(OUTPUT_FOLDER, f"embeddings-images-{season_folder}.jsonl")
+        output_file = os.path.join(OUTPUT_FOLDER, f"embeddings-images-{season_folder}-fashion-show-photos.jsonl")
         df = pd.DataFrame(data)
 
         with open(output_file, "w") as f:
@@ -644,9 +632,11 @@ def load(method="recursive-split"):
         load_text_embeddings(data_df, collection)
 
 
-def load_images():
-    """Load image embeddings into ChromaDB, creating separate collections per season."""
-    print("load_images()")
+def load_fashion_show_photos():
+    """Load fashion show photo embeddings into ChromaDB as a single collection."""
+    print("load_fashion_show_photos()")
+
+    COLLECTION_NAME = "images-fashion-show-photos"
 
     # Clear Cache
     chromadb.api.client.SharedSystemClient.clear_system_cache()
@@ -672,49 +662,43 @@ def load_images():
     if client is None:
         raise RuntimeError("Failed to connect to ChromaDB")
 
-    # Find all season embedding files
-    embedding_files = glob.glob(os.path.join(OUTPUT_FOLDER, "embeddings-images-*.jsonl"))
+    # Find all fashion-show-photos embedding files (one per season)
+    embedding_files = glob.glob(os.path.join(OUTPUT_FOLDER, "embeddings-images-*-fashion-show-photos.jsonl"))
 
     if not embedding_files:
-        print(f"⚠ No image embeddings found in {OUTPUT_FOLDER}. Run --embed-images first.")
+        print(f"⚠ No fashion show photo embeddings found in {OUTPUT_FOLDER}. Run --embed-fashion-show-photos first.")
         return
 
-    print(f"Found {len(embedding_files)} season(s) to load")
+    print(f"Found {len(embedding_files)} season file(s) to load into '{COLLECTION_NAME}'")
 
-    # Load each season's embeddings into its own collection
+    # Delete existing collection and recreate
+    try:
+        client.delete_collection(name=COLLECTION_NAME)
+        print(f"Deleted existing collection '{COLLECTION_NAME}'")
+    except Exception:
+        pass
+
+    collection = client.create_collection(
+        name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+    print(f"Created collection '{COLLECTION_NAME}'")
+
+    # Load all seasons into the single collection
     total_loaded = 0
     for jsonl_file in sorted(embedding_files):
-        # Extract season name from filename
-        # e.g., "embeddings-images-FW1986-87.jsonl" -> "FW1986-87"
-        season = os.path.basename(jsonl_file).replace("embeddings-images-", "").replace(".jsonl", "")
-        collection_name = f"images-{season}"
-
-        print(f"\n→ Loading season: {season}")
-        print(f"  Collection: {collection_name}")
-
-        # Delete existing collection if it exists
-        try:
-            client.delete_collection(name=collection_name)
-            print(f"  Deleted existing collection")
-        except Exception:
-            pass
-
-        # Create new collection
-        collection = client.create_collection(
-            name=collection_name, metadata={"hnsw:space": "cosine"})
-        print(f"  Created collection")
-
-        # Load embeddings
-        print(f"  Loading from {jsonl_file}")
+        season = (
+            os.path.basename(jsonl_file)
+            .replace("embeddings-images-", "")
+            .replace("-fashion-show-photos.jsonl", "")
+        )
+        print(f"\n→ Loading season: {season} from {jsonl_file}")
         data_df = pd.read_json(jsonl_file, lines=True)
         print(f"  Shape: {data_df.shape}")
 
-        # Load data using image-specific loader
         load_image_embeddings(data_df, collection)
         total_loaded += len(data_df)
         print(f"  ✓ Loaded {len(data_df)} images")
 
-    print(f"\n✓ Image loading complete. Total: {total_loaded} images across {len(embedding_files)} seasons")
+    print(f"\n✓ Fashion show photos loading complete. Total: {total_loaded} images across {len(embedding_files)} seasons into '{COLLECTION_NAME}'")
 
 
 def query(method="recursive-split", q=None, top_k=10, filters=None, contains=None):  # update query() to accept args + filters
@@ -974,14 +958,14 @@ def main(args=None):
     if args.embed:
         embed(method=args.chunk_type)
 
-    if args.embed_images:
-        embed_images()
+    if args.embed_fashion_show_photos:
+        embed_fashion_show_photos()
 
     if args.load:
         load(method=args.chunk_type)
 
-    if args.load_images:
-        load_images()
+    if args.load_fashion_show_photos:
+        load_fashion_show_photos()
 
      # wire the CLI flags
     filters = parse_filters(args.filter)
@@ -1044,14 +1028,14 @@ if __name__ == "__main__":
         help="Chat with LLM Agent",
     )
     parser.add_argument(
-        "--embed-images",
+        "--embed-fashion-show-photos",
         action="store_true",
-        help="Generate embeddings for images",
+        help="Generate embeddings for fashion show photos (Alta Moda seasons)",
     )
     parser.add_argument(
-        "--load-images",
+        "--load-fashion-show-photos",
         action="store_true",
-        help="Load image embeddings to vector db",
+        help="Load fashion show photo embeddings into ChromaDB (single collection: images-fashion-show-photos)",
     )
     parser.add_argument("--chunk_type", default="recursive-split",
                         help="char-split | recursive-split | semantic-split")
