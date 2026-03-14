@@ -108,7 +108,7 @@ fi
 
 if [ "$SKIP_LOAD_IMAGES" = "0" ]; then
     echo "→ Loading image embeddings to ChromaDB..."
-    python cli.py --load-images || echo "⚠ Load image embeddings step failed"
+    python cli.py --load-fashion-show-photos || echo "⚠ Load image embeddings step failed"
 fi
 
 echo "✓ Pipeline complete"
