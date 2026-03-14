@@ -1,0 +1,37 @@
+# VCS and editor junk
+.git
+.gitignore
+.gitattributes
+.DS_Store
+*.code-workspace
+.vscode/
+.idea/
+
+# Python cache / local env
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env
+
+# Secrets should never be sent in Docker build context
+secrets/
+../../../secrets/
+
+# Runtime/generated folders mounted as volumes at container run time
+outputs/
+docker-volumes/
+
+# Large local datasets: keep them out of the image build context
+# They are mounted separately by docker-compose when needed.
+input-datasets/
+
+# Optional local artifacts / logs
+*.log
+
+# If you do NOT want metadata baked into the image, uncomment the next line.
+# metadata/
