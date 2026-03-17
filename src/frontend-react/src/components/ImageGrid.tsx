@@ -1,0 +1,185 @@
+"use client";
+
+import { InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { ImageCard } from "@/components/ImageCard";
+import { fetchLandingFeed } from "@/lib/api";
+import { LandingFeedResponse } from "@/lib/types";
+
+const PAGE_SIZE = 24;
+const GRID_GAP_PX = 16;
+const CARD_ASPECT_HEIGHT_OVER_WIDTH = 5 / 4;
+
+function getColumnCount(width: number): number {
+  if (width >= 1280) {
+    return 5;
+  }
+  if (width >= 1024) {
+    return 4;
+  }
+  if (width >= 640) {
+    return 3;
+  }
+  return 2;
+}
+
+export function ImageGrid() {
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [columnCount, setColumnCount] = useState(2);
+  const [staggerOffsetPx, setStaggerOffsetPx] = useState(0);
+
+  const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
+    useInfiniteQuery<
+      LandingFeedResponse,
+      Error,
+      InfiniteData<LandingFeedResponse, number>,
+      ["landing-feed"],
+      number
+    >({
+      queryKey: ["landing-feed"],
+      queryFn: ({ pageParam }) => fetchLandingFeed(pageParam, PAGE_SIZE),
+      initialPageParam: 0,
+      getNextPageParam: (lastPage) =>
+        lastPage.pagination.has_more ? lastPage.pagination.next_offset : undefined,
+    });
+
+  useEffect(() => {
+    const updateColumnCount = () => setColumnCount(getColumnCount(window.innerWidth));
+    updateColumnCount();
+    window.addEventListener("resize", updateColumnCount);
+
+    return () => window.removeEventListener("resize", updateColumnCount);
+  }, []);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) {
+      return;
+    }
+
+    const updateOffsets = () => {
+      const gridWidth = grid.clientWidth;
+      if (!gridWidth || columnCount <= 0) {
+        setStaggerOffsetPx(0);
+        return;
+      }
+
+      const totalGap = GRID_GAP_PX * (columnCount - 1);
+      const columnWidth = (gridWidth - totalGap) / columnCount;
+      const tileHeight = columnWidth * CARD_ASPECT_HEIGHT_OVER_WIDTH;
+
+      // Columns 2 and 4 should start roughly mid-way into columns 1/3/5 first tile.
+      setStaggerOffsetPx(Math.round(tileHeight * 0.5));
+    };
+
+    updateOffsets();
+    const resizeObserver = new ResizeObserver(updateOffsets);
+    resizeObserver.observe(grid);
+    return () => resizeObserver.disconnect();
+  }, [columnCount]);
+
+  const getColumnPaddingTop = (columnIndex: number) => {
+    return columnIndex % 2 === 1 ? staggerOffsetPx : 0;
+  };
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const firstEntry = entries[0];
+        if (firstEntry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "400px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  const columns = useMemo(() => {
+    const items = data?.pages.flatMap((page) => page.items) ?? [];
+    const nextColumns = Array.from({ length: columnCount }, () => [] as typeof items);
+    items.forEach((item, index) => {
+      nextColumns[index % columnCount].push(item);
+    });
+    return nextColumns;
+  }, [columnCount, data]);
+
+  const skeletonColumns = useMemo(() => {
+    return Array.from({ length: columnCount }, (_, columnIndex) =>
+      Array.from({ length: 6 }, (_, rowIndex) => ({
+        key: `skeleton-${columnIndex}-${rowIndex}`,
+      })),
+    );
+  }, [columnCount]);
+
+  if (isLoading) {
+    return (
+      <section className="mx-auto w-full max-w-[1440px] px-4 pb-10 sm:px-8">
+        <div
+          ref={gridRef}
+          className="grid gap-4"
+          style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+        >
+          {skeletonColumns.map((column, columnIndex) => (
+            <div
+              key={`skeleton-column-${columnIndex}`}
+              className="flex flex-col gap-4"
+              style={{ paddingTop: `${getColumnPaddingTop(columnIndex)}px` }}
+            >
+              {column.map((tile) => (
+                <div key={tile.key} className="aspect-[4/5] rounded-xl bg-muted" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (error instanceof Error) {
+    return (
+      <section className="mx-auto w-full max-w-[1440px] px-4 pb-10 sm:px-8">
+        <div className="rounded-xl border border-border bg-card p-6 text-sm text-red-700">
+          Failed to load archive feed: {error.message}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mx-auto w-full max-w-[1440px] px-4 pb-10 sm:px-8">
+      <div
+        ref={gridRef}
+        className="grid gap-4"
+        style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+      >
+        {columns.map((column, columnIndex) => (
+          <div
+            key={`column-${columnIndex}`}
+            className="flex flex-col gap-4"
+            style={{ paddingTop: `${getColumnPaddingTop(columnIndex)}px` }}
+          >
+            {column.map((item) => (
+              <ImageCard key={item.id} item={item} />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div ref={sentinelRef} className="h-8" />
+
+      {isFetchingNextPage ? (
+        <div className="py-4 text-center text-sm text-foreground/55">Loading more artifacts...</div>
+      ) : null}
+    </section>
+  );
+}
