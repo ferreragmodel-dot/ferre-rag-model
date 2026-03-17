@@ -10,6 +10,8 @@ dependencies = [
     "fastmcp>=2.13.0.2",
     "google-genai>=1.47.0",
     "pillow>=12.0.0",
+    "psycopg2-binary>=2.9.11",
+    "sqlmodel>=0.0.37",
     "tensorflow==2.19.0",
     "uvicorn>=0.34.3",
 ]
