@@ -1,11 +1,14 @@
 "use client";
 
+import Image from "next/image";
+import { Search } from "lucide-react";
 import { InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ImageCard } from "@/components/ImageCard";
-import { fetchLandingFeed } from "@/lib/api";
-import { LandingFeedResponse } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { fetchArchiveItemDetail, fetchLandingFeed } from "@/lib/api";
+import { ArchiveImageItem, ArchiveItemDetailResponse, LandingFeedResponse } from "@/lib/types";
 
 const PAGE_SIZE = 24;
 const GRID_GAP_PX = 16;
@@ -29,6 +32,10 @@ export function ImageGrid() {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [columnCount, setColumnCount] = useState(2);
   const [staggerOffsetPx, setStaggerOffsetPx] = useState(0);
+  const [selectedItem, setSelectedItem] = useState<ArchiveImageItem | null>(null);
+  const [detail, setDetail] = useState<ArchiveItemDetailResponse | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery<
@@ -82,6 +89,31 @@ export function ImageGrid() {
 
   const getColumnPaddingTop = (columnIndex: number) => {
     return columnIndex % 2 === 1 ? staggerOffsetPx : 0;
+  };
+
+  const closeDetail = () => {
+    setSelectedItem(null);
+    setDetail(null);
+    setDetailError(null);
+    setIsDetailLoading(false);
+  };
+
+  const handleImageClick = (item: ArchiveImageItem) => {
+    setSelectedItem(item);
+    setDetail(null);
+    setDetailError(null);
+    setIsDetailLoading(true);
+
+    fetchArchiveItemDetail(item.source_path)
+      .then((response) => {
+        setDetail(response);
+      })
+      .catch((error: Error) => {
+        setDetailError(error.message);
+      })
+      .finally(() => {
+        setIsDetailLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -169,7 +201,7 @@ export function ImageGrid() {
             style={{ paddingTop: `${getColumnPaddingTop(columnIndex)}px` }}
           >
             {column.map((item) => (
-              <ImageCard key={item.id} item={item} />
+              <ImageCard key={item.id} item={item} onClick={handleImageClick} />
             ))}
           </div>
         ))}
@@ -179,6 +211,68 @@ export function ImageGrid() {
 
       {isFetchingNextPage ? (
         <div className="py-4 text-center text-sm text-foreground/55">Loading more artifacts...</div>
+      ) : null}
+
+      {selectedItem ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div
+            className="relative w-full max-w-5xl rounded-2xl bg-[#f2f2f2] p-6 shadow-2xl"
+            style={{ fontFamily: 'Didot, "Bodoni 72", "Times New Roman", serif' }}
+          >
+            <button
+              type="button"
+              onClick={closeDetail}
+              className="absolute right-4 top-3 text-xl text-foreground/65 hover:text-foreground"
+              aria-label="Close"
+            >
+              ×
+            </button>
+
+            {isDetailLoading ? (
+              <div className="py-16 text-center text-sm text-foreground/70">Loading archive detail...</div>
+            ) : detailError ? (
+              <div className="py-16 text-center text-sm text-red-700">Failed to load detail: {detailError}</div>
+            ) : detail ? (
+              <div className="grid gap-6 md:grid-cols-[320px,1fr]">
+                <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border bg-card">
+                  <Image
+                    src={detail.image_url}
+                    alt={selectedItem.title}
+                    fill
+                    className="object-cover"
+                    sizes="320px"
+                  />
+                </div>
+                <div className="flex max-h-[70vh] flex-col">
+                  <div className="flex-1 overflow-y-auto pr-2">
+                    <h2 className="mb-4 text-3xl tracking-tight">{detail.metadata.object ?? selectedItem.title}</h2>
+                    <div className="space-y-2 text-sm leading-6 text-foreground/85">
+                      <p><strong>Season:</strong> {detail.metadata.season ?? "-"}</p>
+                      <p><strong>Collection line:</strong> {detail.metadata.collection_line ?? "-"}</p>
+                      <p><strong>Look:</strong> {detail.metadata.look ?? "-"}</p>
+                      <p><strong>Year:</strong> {detail.metadata.year ?? "-"}</p>
+                      <p><strong>Description:</strong> {detail.metadata.description ?? "-"}</p>
+                      <p><strong>Materials:</strong> {detail.metadata.materials ?? "-"}</p>
+                      <p><strong>Working process:</strong> {detail.metadata.working_process ?? "-"}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 border-t border-border/60 pt-4">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/45" />
+                      <Input
+                        className="pl-10 text-base"
+                        placeholder="Ask the Archive"
+                        aria-label="Ask the archive"
+                        disabled
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </section>
   );

@@ -4,12 +4,17 @@ import { ArchiveImageItem } from "@/lib/types";
 
 interface ImageCardProps {
   item: ArchiveImageItem;
+  onClick?: (item: ArchiveImageItem) => void;
 }
 
-export function ImageCard({ item }: ImageCardProps) {
+export function ImageCard({ item, onClick }: ImageCardProps) {
 
   return (
-    <article className="group relative overflow-hidden rounded-xl border border-border bg-card shadow-museum transition-transform duration-300 hover:-translate-y-1">
+    <button
+      type="button"
+      onClick={() => onClick?.(item)}
+      className="group relative w-full overflow-hidden rounded-xl border border-border bg-card text-left shadow-museum transition-transform duration-300 hover:-translate-y-1"
+    >
       <div className="relative aspect-[4/5] w-full">
         <Image
           src={item.image_url}
@@ -23,6 +28,6 @@ export function ImageCard({ item }: ImageCardProps) {
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pb-3 pt-10 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <p className="line-clamp-2 text-xs text-white/95">{item.title}</p>
       </div>
-    </article>
+    </button>
   );
 }
