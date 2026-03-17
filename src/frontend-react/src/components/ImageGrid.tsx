@@ -27,6 +27,7 @@ function getColumnCount(width: number): number {
   return 2;
 }
 
+
 export function ImageGrid() {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -53,43 +54,31 @@ export function ImageGrid() {
     });
 
   useEffect(() => {
-    const updateColumnCount = () => setColumnCount(getColumnCount(window.innerWidth));
-    updateColumnCount();
-    window.addEventListener("resize", updateColumnCount);
-
-    return () => window.removeEventListener("resize", updateColumnCount);
+    const update = () => setColumnCount(getColumnCount(window.innerWidth));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
 
   useEffect(() => {
     const grid = gridRef.current;
-    if (!grid) {
-      return;
-    }
-
-    const updateOffsets = () => {
+    if (!grid) return;
+    const updateStagger = () => {
       const gridWidth = grid.clientWidth;
-      if (!gridWidth || columnCount <= 0) {
-        setStaggerOffsetPx(0);
-        return;
-      }
-
+      if (!gridWidth || columnCount <= 0) { setStaggerOffsetPx(0); return; }
       const totalGap = GRID_GAP_PX * (columnCount - 1);
       const columnWidth = (gridWidth - totalGap) / columnCount;
       const tileHeight = columnWidth * CARD_ASPECT_HEIGHT_OVER_WIDTH;
-
-      // Columns 2 and 4 should start roughly mid-way into columns 1/3/5 first tile.
       setStaggerOffsetPx(Math.round(tileHeight * 0.5));
     };
-
-    updateOffsets();
-    const resizeObserver = new ResizeObserver(updateOffsets);
-    resizeObserver.observe(grid);
-    return () => resizeObserver.disconnect();
+    updateStagger();
+    const ro = new ResizeObserver(updateStagger);
+    ro.observe(grid);
+    return () => ro.disconnect();
   }, [columnCount]);
 
-  const getColumnPaddingTop = (columnIndex: number) => {
-    return columnIndex % 2 === 1 ? staggerOffsetPx : 0;
-  };
+  const getColumnPaddingTop = (columnIndex: number) =>
+    columnIndex % 2 === 1 ? staggerOffsetPx : 0;
 
   const closeDetail = () => {
     setSelectedItem(null);

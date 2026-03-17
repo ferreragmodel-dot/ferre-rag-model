@@ -20,7 +20,7 @@ export function ImageCard({ item, onClick }: ImageCardProps) {
           src={item.image_url}
           alt={item.title}
           fill
-          className="object-cover"
+          className="object-cover object-top"
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
           priority={false}
         />

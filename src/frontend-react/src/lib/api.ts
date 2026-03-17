@@ -1,4 +1,8 @@
-import { ArchiveItemDetailResponse, LandingFeedResponse } from "@/lib/types";
+import {
+  ArchiveItemDetailResponse,
+  ConversationResponse,
+  LandingFeedResponse,
+} from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 
@@ -33,4 +37,22 @@ export async function fetchArchiveItemDetail(
   }
 
   return response.json() as Promise<ArchiveItemDetailResponse>;
+}
+
+export async function fetchArchiveConversation(message: string): Promise<ConversationResponse> {
+  const url = new URL("/archive/conversation", API_BASE_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch archive conversation: ${response.status}`);
+  }
+
+  return response.json() as Promise<ConversationResponse>;
 }
