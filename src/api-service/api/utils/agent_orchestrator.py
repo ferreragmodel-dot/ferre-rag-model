@@ -12,7 +12,7 @@ from google.genai import types
 from google.genai.types import Content, Part
 from google.genai import errors
 
-from api.utils.agent_tools import ferre_archive_tool, execute_function_calls
+from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls
 
 # Setup
 GCP_PROJECT = os.environ["GCP_PROJECT"]
@@ -30,27 +30,31 @@ llm_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCAT
 
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
-You are an AI assistant specialized in Gianfranco Ferré and fashion archive research. Your responses are based solely on the information provided in the text chunks given to you. Do not use any external knowledge or make assumptions beyond what is explicitly stated in these chunks.
+You are an AI assistant specialized in Gianfranco Ferre and fashion archive research. Your responses are based solely on the information provided in the text chunks given to you. Do not use any external knowledge or make assumptions beyond what is explicitly stated in these chunks.
 
 When answering a query:
 1. Carefully read all the text chunks provided.
 2. Identify the most relevant information from these chunks to address the user's question.
 3. Formulate your response using only the information found in the given chunks.
 4. If the provided chunks do not contain sufficient information to answer the query, state that you don't have enough information to provide a complete answer.
-5. Always maintain a professional and knowledgeable tone, befitting a Ferré archive expert.
+5. Always maintain a professional and knowledgeable tone, befitting a Ferre archive expert.
 6. If there are contradictions in the provided chunks, mention this in your response and explain the different viewpoints presented.
 
 Remember:
-- You are an expert in Ferré and fashion, but your knowledge is limited to the information in the provided chunks.
+- You are an expert in Ferre and fashion, but your knowledge is limited to the information in the provided chunks.
 - Do not invent information or draw from knowledge outside of the given text chunks.
-- If asked about topics unrelated to Ferré or fashion, politely redirect the conversation back to archive-related subjects.
+- If asked about topics unrelated to Ferre or fashion, politely redirect the conversation back to archive-related subjects.
 - Be concise in your responses while ensuring you cover all relevant information from the chunks.
 
-Your goal is to provide accurate, helpful information about Ferré and fashion based solely on the content of the text chunks you receive with each query.
+Your goal is to provide accurate, helpful information about Ferre and fashion based solely on the content of the text chunks you receive with each query.
 """
 
-# Connect to ChromaDB
-chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+# Connect to ChromaDB (optional for local non-RAG runs)
+try:
+    chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+except Exception as chroma_error:
+    chroma_client = None
+    print(f"ChromaDB unavailable; running agent without retrieval tools: {chroma_error}")
 COLLECTION_NAME = "recursive-split-collection"
 
 # Initialize agent chat sessions
@@ -60,8 +64,7 @@ chat_sessions: Dict[str, "AgentChatSession"] = {}
 class AgentChatSession:
     """Stateful wrapper for the agentic conversation history.
 
-    Unlike the Chat object used in llm_utils / llm_rag_utils, the agent
-    calls generate_content() directly (stateless API), so we track the
+    The agent calls generate_content() directly (stateless API), so we track the
     conversation history manually as a list of Content objects.
     """
 
@@ -88,9 +91,9 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
     """
     Generate a response using the 3-step agentic RAG pipeline.
 
-    Step 1 — Tool selection: LLM decides which archive search tool to call.
-    Step 2 — Execution: run the selected tool(s) against ChromaDB.
-    Step 3 — Answer generation: LLM generates a grounded final answer.
+    Step 1 - Tool selection: LLM decides which archive search tool to call.
+    Step 2 - Execution: run the selected tool(s) against ChromaDB.
+    Step 3 - Answer generation: LLM generates a grounded final answer.
 
     Args:
         session: AgentChatSession holding the conversation history.
@@ -100,7 +103,6 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
         str: The model's final response text.
     """
     try:
-        collection = chroma_client.get_collection(name=COLLECTION_NAME)
 
         # Build user content parts (text + optional image)
         user_parts = []
@@ -118,7 +120,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             user_parts.append(
                 Part.from_text(
                     text=message.get("content")
-                    or "Describe what you see in this image in the context of Gianfranco Ferré fashion archive research"
+                    or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
                 )
             )
         elif message.get("image_path"):
@@ -135,7 +137,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             user_parts.append(
                 Part.from_text(
                     text=message.get("content")
-                    or "Describe what you see in this image in the context of Gianfranco Ferré fashion archive research"
+                    or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
                 )
             )
         else:
@@ -146,6 +148,22 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             raise ValueError("Message must contain either text content or image")
 
         user_content = Content(role="user", parts=user_parts)
+
+        # If ChromaDB is unavailable, skip tool-based retrieval and do direct generation.
+        if chroma_client is None:
+            final_response = llm_client.models.generate_content(
+                model=GENERATIVE_MODEL,
+                contents=session.history + [user_content],
+                config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION),
+            )
+            final_text = final_response.text
+            session.history.append(user_content)
+            session.history.append(
+                Content(role="model", parts=[Part.from_text(text=final_text)])
+            )
+            return final_text
+
+        collection = chroma_client.get_collection(name=COLLECTION_NAME)
 
         # Step 1: LLM selects which tool(s) to call
         tool_selection_response = llm_client.models.generate_content(
@@ -227,7 +245,7 @@ def rebuild_chat_session(chat_history: List[Dict], history_dir: str = None) -> A
 
     Only user text/image and assistant text turns are stored on disk.
     The intermediate tool-call/function-response content is not persisted,
-    so the rebuilt history contains simplified user↔assistant pairs.
+    so the rebuilt history contains simplified user<->assistant pairs.
     """
     formatted_history = []
     for message in chat_history:
@@ -254,7 +272,7 @@ def rebuild_chat_session(chat_history: List[Dict], history_dir: str = None) -> A
             elif has_image:
                 parts.append(
                     types.Part.from_text(
-                        text="Describe what you see in this image in the context of Gianfranco Ferré fashion archive research"
+                        text="Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
                     )
                 )
             if parts:

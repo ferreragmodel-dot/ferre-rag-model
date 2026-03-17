@@ -50,8 +50,8 @@ ARCHIVE_DOCUMENTS = [
 search_archive_func = types.FunctionDeclaration(
     name="search_archive",
     description=(
-        "Search the Gianfranco Ferré archive by topic or content across all documents. "
-        "Use this for general questions about Ferré's work, fashion philosophy, design process, "
+        "Search the Gianfranco Ferre archive by topic or content across all documents. "
+        "Use this for general questions about Ferre's work, fashion philosophy, design process, "
         "materials, elegance, creativity, and other broad topics."
     ),
     parameters={
@@ -61,7 +61,7 @@ search_archive_func = types.FunctionDeclaration(
                 "type": "string",
                 "description": (
                     "The topic or question to search for. Expand into a descriptive sentence "
-                    "for better semantic matching (e.g. 'Ferré's view on the relationship "
+                    "for better semantic matching (e.g. 'Ferre's view on the relationship "
                     "between architecture and fashion design')."
                 ),
             },
@@ -74,7 +74,7 @@ search_archive_func = types.FunctionDeclaration(
 search_by_document_func = types.FunctionDeclaration(
     name="search_by_document",
     description=(
-        "Search within a specific document from the Gianfranco Ferré archive. "
+        "Search within a specific document from the Gianfranco Ferre archive. "
         "Use when the query explicitly refers to a known document, lesson, or topic area "
         "(e.g. India travel notes, white shirt essay, jewelry lesson, Dior notes)."
     ),
@@ -99,7 +99,7 @@ search_by_document_func = types.FunctionDeclaration(
 search_by_year_func = types.FunctionDeclaration(
     name="search_by_year",
     description=(
-        "Search the Gianfranco Ferré archive filtered to documents from a specific year. "
+        "Search the Gianfranco Ferre archive filtered to documents from a specific year. "
         "Use when the query asks about a particular period or year."
     ),
     parameters={

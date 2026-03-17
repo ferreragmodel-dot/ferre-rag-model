@@ -2,6 +2,7 @@
 .DS_Store
 /docker-volumes
 /chat-history
+node_modules/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -62,3 +63,12 @@ venv.bak/
 *~
 
 _test.py
+
+outputs
+input-datasets
+
+*.pdf
+
+secrets
+
+src/frontend-react/.next/

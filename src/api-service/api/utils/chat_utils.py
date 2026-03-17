@@ -6,7 +6,10 @@ import base64
 import traceback
 from pydantic import BaseModel, Field
 
-persistent_dir = "/persistent"
+DEFAULT_PERSISTENT_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", ".local-persistent")
+)
+persistent_dir = os.environ.get("CHAT_PERSISTENT_DIR", DEFAULT_PERSISTENT_DIR)
 
 
 class ChatMessage(BaseModel):
