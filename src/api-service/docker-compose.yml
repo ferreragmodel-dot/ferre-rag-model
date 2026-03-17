@@ -1,0 +1,50 @@
+networks:
+    default:
+        name: llm-rag-network
+        external: true
+
+services:
+    llm-rag-api-service:
+        build: .
+        image: llm-rag-api-service
+        container_name: llm-rag-api-service
+        volumes:
+            - .:/app
+            - ../../../secrets:/secrets
+            - ../../../persistent-folder:/persistent
+            - ../../images:/images
+            - ../../input-datasets:/input-datasets
+        ports:
+            - 9000:9000
+        environment:
+            DEV: ${DEV:-0}
+            GOOGLE_APPLICATION_CREDENTIALS: /secrets/llm-service-account.json
+            GCP_PROJECT: ${GCP_PROJECT}
+            CHAT_PERSISTENT_DIR: /persistent
+            CHROMADB_HOST: llm-rag-chromadb
+            CHROMADB_PORT: 8000
+            POSTGRES_HOST: llm-rag-postgres
+            POSTGRES_PORT: 5432
+            POSTGRES_DB: ${POSTGRES_DB:-ragdb}
+            POSTGRES_USER: ${POSTGRES_USER:-app}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    postgres:
+        image: postgres:17-bookworm
+        container_name: llm-rag-postgres
+        ports:
+            - 5432:5432
+        volumes:
+            - ./docker-volumes/postgres:/var/lib/postgresql/data
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB:-ragdb}
+            POSTGRES_USER: ${POSTGRES_USER:-app}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-ragdb}"]
+            interval: 5s
+            timeout: 5s
+            retries: 5

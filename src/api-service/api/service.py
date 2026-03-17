@@ -44,12 +44,21 @@ STUB_METADATA = {
 }
 
 
+def _safe_parents(path: Path, n: int):
+    """Return path.parents[n] or None if out of range."""
+    return path.parents[n] if n < len(path.parents) else None
+
+
 def _find_images_dir() -> Path:
     """Resolve the images directory in both local and containerized layouts."""
+    _base = Path(__file__).resolve()
     candidates = [
-        Path(__file__).resolve().parents[3] / "images",
-        Path(__file__).resolve().parents[1] / "images",
-        Path.cwd() / "images",
+        c for c in [
+            Path("/images"),
+            _safe_parents(_base, 3) and _safe_parents(_base, 3) / "images",
+            _safe_parents(_base, 1) and _safe_parents(_base, 1) / "images",
+            Path.cwd() / "images",
+        ] if c
     ]
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
@@ -59,11 +68,14 @@ def _find_images_dir() -> Path:
 
 def _find_designs_dir() -> Path:
     """Resolve the ferre-designs dataset directory in local/container layouts."""
+    _base = Path(__file__).resolve()
     candidates = [
-        Path(__file__).resolve().parents[3] / "input-datasets" / "ferre-designs",
-        Path(__file__).resolve().parents[3] / "src" / "vector-db" / "input-datasets" / "ferre-designs",
-        Path(__file__).resolve().parents[1] / "input-datasets" / "ferre-designs",
-        Path.cwd() / "input-datasets" / "ferre-designs",
+        c for c in [
+            Path("/input-datasets/ferre-designs"),
+            _safe_parents(_base, 3) and _safe_parents(_base, 3) / "input-datasets" / "ferre-designs",
+            _safe_parents(_base, 1) and _safe_parents(_base, 1) / "input-datasets" / "ferre-designs",
+            Path.cwd() / "input-datasets" / "ferre-designs",
+        ] if c
     ]
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
