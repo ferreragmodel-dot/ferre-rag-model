@@ -13,11 +13,24 @@ export interface ChatMessage {
   image_path?: string;
 }
 
+export interface ChatImage {
+  source_path: string;
+  image_url: string;
+}
+
+export interface ChatSource {
+  document: string;
+  year: string;
+  excerpt: string;
+}
+
 export interface ChatData {
   chat_id: string;
   title: string;
   dts: number;
   messages: ChatMessage[];
+  images?: ChatImage[];
+  sources?: ChatSource[];
 }
 
 export async function fetchLandingFeed(offset = 0, limit = 24): Promise<LandingFeedResponse> {

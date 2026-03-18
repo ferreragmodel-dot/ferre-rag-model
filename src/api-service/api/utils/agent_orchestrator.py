@@ -11,6 +11,8 @@ from google import genai
 from google.genai import types
 from google.genai.types import Content, Part
 from google.genai import errors
+import vertexai
+from vertexai.vision_models import MultiModalEmbeddingModel
 
 from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls
 
@@ -19,6 +21,7 @@ GCP_PROJECT = os.environ["GCP_PROJECT"]
 GCP_LOCATION = "us-central1"
 EMBEDDING_MODEL = "text-embedding-004"
 EMBEDDING_DIMENSION = 256
+MULTIMODAL_EMBEDDING_DIMENSION = 1408  # For image embeddings
 GENERATIVE_MODEL = "gemini-2.0-flash-001"
 CHROMADB_HOST = os.environ["CHROMADB_HOST"]
 CHROMADB_PORT = os.environ["CHROMADB_PORT"]
@@ -28,6 +31,10 @@ CHROMADB_PORT = os.environ["CHROMADB_PORT"]
 llm_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 #############################################################################
 
+# Initialize Vertex AI for multimodal embeddings
+vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
+multimodal_model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
+
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
 You are an AI assistant specialized in Gianfranco Ferre and fashion archive research. Your responses are based solely on the information provided in the text chunks given to you. Do not use any external knowledge or make assumptions beyond what is explicitly stated in these chunks.
@@ -36,15 +43,18 @@ When answering a query:
 1. Carefully read all the text chunks provided.
 2. Identify the most relevant information from these chunks to address the user's question.
 3. Formulate your response using only the information found in the given chunks.
-4. If the provided chunks do not contain sufficient information to answer the query, state that you don't have enough information to provide a complete answer.
-5. Always maintain a professional and knowledgeable tone, befitting a Ferre archive expert.
-6. If there are contradictions in the provided chunks, mention this in your response and explain the different viewpoints presented.
+4. When citing information, use inline citations in the format [1], [2], [3], etc. that reference the numbered sources.
+5. **Only cite the most important and unique sources (maximum 5 citations).** Do not over-cite; focus on the most relevant information sources.
+6. If the provided chunks do not contain sufficient information to answer the query, state that you don't have enough information to provide a complete answer.
+7. Always maintain a professional and knowledgeable tone, befitting a Ferre archive expert.
+8. If there are contradictions in the provided chunks, mention this in your response and explain the different viewpoints presented.
 
 Remember:
 - You are an expert in Ferre and fashion, but your knowledge is limited to the information in the provided chunks.
 - Do not invent information or draw from knowledge outside of the given text chunks.
 - If asked about topics unrelated to Ferre or fashion, politely redirect the conversation back to archive-related subjects.
 - Be concise in your responses while ensuring you cover all relevant information from the chunks.
+- Always cite your sources with [N] markers when making factual claims, but keep citations minimal and meaningful.
 
 Your goal is to provide accurate, helpful information about Ferre and fashion based solely on the content of the text chunks you receive with each query.
 """
@@ -87,7 +97,28 @@ def generate_query_embedding(query: str) -> List[float]:
     return response.embeddings[0].values
 
 
-def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
+def generate_image_query_embedding(query: str) -> List[float]:
+    """Generate a multimodal embedding vector for image search.
+
+    Uses the multimodalembedding@001 model to generate text embeddings that are
+    in the same 1408-dimensional space as the image embeddings, allowing for
+    proper semantic similarity search.
+    """
+    try:
+        response = multimodal_model.get_embeddings(
+            contextual_text=query,
+            dimension=MULTIMODAL_EMBEDDING_DIMENSION
+        )
+        if response and response.text_embedding:
+            return response.text_embedding
+        else:
+            raise ValueError("No text embeddings returned from multimodal model")
+    except Exception as e:
+        print(f"Error generating multimodal embedding: {e}")
+        raise
+
+
+def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
     """
     Generate a response using the 3-step agentic RAG pipeline.
 
@@ -100,7 +131,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
         message: Dict with 'content' (text) and optionally 'image' (base64).
 
     Returns:
-        str: The model's final response text.
+        tuple: (response_text, sources_list)
     """
     try:
 
@@ -161,7 +192,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             session.history.append(
                 Content(role="model", parts=[Part.from_text(text=final_text)])
             )
-            return final_text
+            return final_text, []
 
         collection = chroma_client.get_collection(name=COLLECTION_NAME)
 
@@ -197,12 +228,12 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             session.history.append(
                 Content(role="model", parts=[Part.from_text(text=final_text)])
             )
-            return final_text
+            return final_text, []
 
         tool_call_content = tool_selection_response.candidates[0].content
 
         # Step 2: Execute function calls against ChromaDB
-        function_responses = execute_function_calls(
+        function_responses, sources = execute_function_calls(
             function_calls, collection, embed_func=generate_query_embedding
         )
 
@@ -229,7 +260,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             Content(role="model", parts=[Part.from_text(text=final_text)])
         )
 
-        return final_text
+        return final_text, sources
 
     except Exception as e:
         print(f"Error generating agent response: {str(e)}")

@@ -6,6 +6,7 @@ import { InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ImageCard } from "@/components/ImageCard";
+import { ConversationPopup } from "@/components/ConversationPopup";
 import { Input } from "@/components/ui/input";
 import { fetchArchiveItemDetail, fetchLandingFeed } from "@/lib/api";
 import { ArchiveImageItem, ArchiveItemDetailResponse, LandingFeedResponse } from "@/lib/types";
@@ -37,6 +38,8 @@ export function ImageGrid() {
   const [detail, setDetail] = useState<ArchiveItemDetailResponse | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [imageQueryInput, setImageQueryInput] = useState("");
+  const [conversationQuery, setConversationQuery] = useState<string | null>(null);
 
   const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery<
@@ -85,6 +88,16 @@ export function ImageGrid() {
     setDetail(null);
     setDetailError(null);
     setIsDetailLoading(false);
+    setImageQueryInput("");
+  };
+
+  const handleImageQuerySubmit = () => {
+    const trimmed = imageQueryInput.trim();
+    if (!trimmed) {
+      return;
+    }
+    setConversationQuery(trimmed);
+    closeDetail();
   };
 
   const handleImageClick = (item: ArchiveImageItem) => {
@@ -253,7 +266,13 @@ export function ImageGrid() {
                         className="pl-10 text-base"
                         placeholder="Ask the Archive"
                         aria-label="Ask the archive"
-                        disabled
+                        value={imageQueryInput}
+                        onChange={(e) => setImageQueryInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleImageQuerySubmit();
+                          }
+                        }}
                       />
                     </div>
                   </div>
@@ -262,6 +281,13 @@ export function ImageGrid() {
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {conversationQuery ? (
+        <ConversationPopup
+          initialQuery={conversationQuery}
+          onClose={() => setConversationQuery(null)}
+        />
       ) : null}
     </section>
   );
