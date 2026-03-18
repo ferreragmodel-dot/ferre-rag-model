@@ -36,15 +36,18 @@ When answering a query:
 1. Carefully read all the text chunks provided.
 2. Identify the most relevant information from these chunks to address the user's question.
 3. Formulate your response using only the information found in the given chunks.
-4. If the provided chunks do not contain sufficient information to answer the query, state that you don't have enough information to provide a complete answer.
-5. Always maintain a professional and knowledgeable tone, befitting a Ferre archive expert.
-6. If there are contradictions in the provided chunks, mention this in your response and explain the different viewpoints presented.
+4. When citing information, use inline citations in the format [1], [2], [3], etc. that reference the numbered sources.
+5. **Only cite the most important and unique sources (maximum 5 citations).** Do not over-cite; focus on the most relevant information sources.
+6. If the provided chunks do not contain sufficient information to answer the query, state that you don't have enough information to provide a complete answer.
+7. Always maintain a professional and knowledgeable tone, befitting a Ferre archive expert.
+8. If there are contradictions in the provided chunks, mention this in your response and explain the different viewpoints presented.
 
 Remember:
 - You are an expert in Ferre and fashion, but your knowledge is limited to the information in the provided chunks.
 - Do not invent information or draw from knowledge outside of the given text chunks.
 - If asked about topics unrelated to Ferre or fashion, politely redirect the conversation back to archive-related subjects.
 - Be concise in your responses while ensuring you cover all relevant information from the chunks.
+- Always cite your sources with [N] markers when making factual claims, but keep citations minimal and meaningful.
 
 Your goal is to provide accurate, helpful information about Ferre and fashion based solely on the content of the text chunks you receive with each query.
 """
@@ -87,7 +90,7 @@ def generate_query_embedding(query: str) -> List[float]:
     return response.embeddings[0].values
 
 
-def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
+def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
     """
     Generate a response using the 3-step agentic RAG pipeline.
 
@@ -100,7 +103,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
         message: Dict with 'content' (text) and optionally 'image' (base64).
 
     Returns:
-        str: The model's final response text.
+        tuple: (response_text, sources_list)
     """
     try:
 
@@ -161,7 +164,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             session.history.append(
                 Content(role="model", parts=[Part.from_text(text=final_text)])
             )
-            return final_text
+            return final_text, []
 
         collection = chroma_client.get_collection(name=COLLECTION_NAME)
 
@@ -197,12 +200,12 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             session.history.append(
                 Content(role="model", parts=[Part.from_text(text=final_text)])
             )
-            return final_text
+            return final_text, []
 
         tool_call_content = tool_selection_response.candidates[0].content
 
         # Step 2: Execute function calls against ChromaDB
-        function_responses = execute_function_calls(
+        function_responses, sources = execute_function_calls(
             function_calls, collection, embed_func=generate_query_embedding
         )
 
@@ -229,7 +232,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> str:
             Content(role="model", parts=[Part.from_text(text=final_text)])
         )
 
-        return final_text
+        return final_text, sources
 
     except Exception as e:
         print(f"Error generating agent response: {str(e)}")

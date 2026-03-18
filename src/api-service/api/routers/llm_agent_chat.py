@@ -1,5 +1,6 @@
 import os
-from fastapi import APIRouter, Header, Query, Body, HTTPException
+import random
+from fastapi import APIRouter, Header, Query, Body, HTTPException, Request
 from fastapi.responses import FileResponse
 from typing import Dict, Any, List, Optional
 import uuid
@@ -16,11 +17,80 @@ from api.utils.agent_orchestrator import (
 from api.utils.chat_utils import ChatHistoryManager, ChatMessage
 
 
+# Image extensions
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"}
+
 # Define Router
 router = APIRouter()
 
 # Initialize chat history manager and sessions
 chat_manager = ChatHistoryManager(model="llm-agent")
+
+
+def _safe_parents(path: Path, n: int):
+    """Return path.parents[n] or None if out of range."""
+    return path.parents[n] if n < len(path.parents) else None
+
+
+def _find_designs_dir() -> Optional[Path]:
+    """Resolve the ferre-designs dataset directory."""
+    _base = Path(__file__).resolve()
+    candidates = [
+        c for c in [
+            Path("/input-datasets/ferre-designs"),
+            _safe_parents(_base, 4) and _safe_parents(_base, 4) / "input-datasets" / "ferre-designs",
+            _safe_parents(_base, 3) and _safe_parents(_base, 3) / "input-datasets" / "ferre-designs",
+            _safe_parents(_base, 1) and _safe_parents(_base, 1) / "input-datasets" / "ferre-designs",
+            Path.cwd() / "input-datasets" / "ferre-designs",
+        ] if c
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+    return None
+
+
+def _get_first_season_images() -> list[Path]:
+    """Return image paths from first season folder."""
+    designs_dir = _find_designs_dir()
+    if not designs_dir:
+        return []
+
+    season_dirs = sorted([path for path in designs_dir.glob("*/*") if path.is_dir()])
+    if not season_dirs:
+        return []
+
+    first_season_dir = season_dirs[0]
+    return sorted([
+        file_path
+        for file_path in first_season_dir.rglob("*")
+        if file_path.is_file() and file_path.suffix.lower() in IMAGE_EXTENSIONS
+    ])
+
+
+def _get_sample_images(request: Request, count: int = 3) -> List[Dict[str, str]]:
+    """Sample random images from first season and build URLs."""
+    designs_dir = _find_designs_dir()
+    if not designs_dir:
+        return []
+
+    image_files = _get_first_season_images()
+    if not image_files:
+        return []
+
+    selected = random.sample(image_files, k=min(count, len(image_files)))
+    images = []
+    for image_path in selected:
+        try:
+            relative_path = image_path.relative_to(designs_dir).as_posix()
+            image_url = str(request.base_url).rstrip("/") + f"/design-images/{relative_path}"
+            images.append({
+                "source_path": relative_path,
+                "image_url": image_url,
+            })
+        except Exception:
+            continue
+    return images
 
 
 @router.get("/chats")
@@ -52,6 +122,7 @@ async def get_chat(
 
 @router.post("/chats")
 async def start_chat_with_llm(
+    request: Request,
     message: ChatMessage, x_session_id: str = Header(None, alias="X-Session-ID")
 ):
     message_dict = message.model_dump()
@@ -75,13 +146,17 @@ async def start_chat_with_llm(
     message_dict["role"] = "user"
 
     # Generate response
-    assistant_response = generate_chat_response(chat_session, message_dict)
+    assistant_response_text, response_sources = generate_chat_response(chat_session, message_dict)
 
     # Create chat response
     title = message_dict.get("content")
     if not title:
         title = "Image chat"
     title = title[:50] + "..."
+
+    # Get sample images
+    images = _get_sample_images(request, count=3)
+
     chat_response = {
         "chat_id": chat_id,
         "title": title,
@@ -91,9 +166,11 @@ async def start_chat_with_llm(
             {
                 "message_id": str(uuid.uuid4()),
                 "role": "assistant",
-                "content": assistant_response,
+                "content": assistant_response_text,
             },
         ],
+        "images": images,
+        "sources": response_sources,
     }
 
     # Save chat
@@ -103,6 +180,7 @@ async def start_chat_with_llm(
 
 @router.post("/chats/{chat_id}")
 async def continue_chat_with_llm(
+    request: Request,
     chat_id: str,
     message: ChatMessage,
     x_session_id: str = Header(None, alias="X-Session-ID"),
@@ -135,7 +213,7 @@ async def continue_chat_with_llm(
     message_dict["role"] = "user"
 
     # Generate response
-    assistant_response = generate_chat_response(chat_session, message_dict)
+    assistant_response_text, response_sources = generate_chat_response(chat_session, message_dict)
 
     # Add messages
     chat["messages"].append(message_dict)
@@ -143,9 +221,14 @@ async def continue_chat_with_llm(
         {
             "message_id": str(uuid.uuid4()),
             "role": "assistant",
-            "content": assistant_response,
+            "content": assistant_response_text,
         }
     )
+
+    # Get sample images (refresh on each query)
+    images = _get_sample_images(request, count=3)
+    chat["images"] = images
+    chat["sources"] = response_sources
 
     # Save updated chat
     chat_manager.save_chat(chat, x_session_id)

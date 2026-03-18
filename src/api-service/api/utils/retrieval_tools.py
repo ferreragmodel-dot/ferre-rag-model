@@ -125,15 +125,34 @@ ferre_archive_tool = types.Tool(
 
 
 def search_archive(search_content, collection, embed_func, top_k=10):
-    """Search the full archive by semantic similarity."""
+    """Search the full archive by semantic similarity.
+
+    Returns:
+        tuple: (formatted_text, sources_list)
+    """
     query_embedding = embed_func(search_content)
     results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
     docs = results.get("documents", [[]])[0]
-    return "\n\n".join(docs) if docs else "No results found."
+    metadatas = results.get("metadatas", [[]])[0]
+
+    sources = []
+    for doc, meta in zip(docs, metadatas):
+        sources.append({
+            "document": meta.get("doc", "Unknown"),
+            "year": meta.get("year", "Unknown"),
+            "excerpt": doc[:400] + "..." if len(doc) > 400 else doc,
+        })
+
+    text = "\n\n".join(docs) if docs else "No results found."
+    return text, sources
 
 
 def search_by_year(search_content, year, collection, embed_func, top_k=10):
-    """Search the archive filtered to documents from a specific year."""
+    """Search the archive filtered to documents from a specific year.
+
+    Returns:
+        tuple: (formatted_text, sources_list)
+    """
     query_embedding = embed_func(search_content)
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -141,11 +160,26 @@ def search_by_year(search_content, year, collection, embed_func, top_k=10):
         where={"year": year},
     )
     docs = results.get("documents", [[]])[0]
-    return "\n\n".join(docs) if docs else f"No results found for year '{year}'."
+    metadatas = results.get("metadatas", [[]])[0]
+
+    sources = []
+    for doc, meta in zip(docs, metadatas):
+        sources.append({
+            "document": meta.get("doc", "Unknown"),
+            "year": meta.get("year", "Unknown"),
+            "excerpt": doc[:400] + "..." if len(doc) > 400 else doc,
+        })
+
+    text = "\n\n".join(docs) if docs else f"No results found for year '{year}'."
+    return text, sources
 
 
 def search_by_document(search_content, doc, collection, embed_func, top_k=10):
-    """Search within a specific document by semantic similarity."""
+    """Search within a specific document by semantic similarity.
+
+    Returns:
+        tuple: (formatted_text, sources_list)
+    """
     query_embedding = embed_func(search_content)
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -153,36 +187,61 @@ def search_by_document(search_content, doc, collection, embed_func, top_k=10):
         where={"doc": doc},
     )
     docs = results.get("documents", [[]])[0]
-    return "\n\n".join(docs) if docs else f"No results found in '{doc}'."
+    metadatas = results.get("metadatas", [[]])[0]
+
+    sources = []
+    for doc_text, meta in zip(docs, metadatas):
+        sources.append({
+            "document": meta.get("doc", "Unknown"),
+            "year": meta.get("year", "Unknown"),
+            "excerpt": doc_text[:200] + "..." if len(doc_text) > 200 else doc_text,
+        })
+
+    text = "\n\n".join(docs) if docs else f"No results found in '{doc}'."
+    return text, sources
 
 
 def execute_function_calls(function_calls, collection, embed_func, top_k=10):
-    """Execute LLM-requested function calls and return function response Parts."""
+    """Execute LLM-requested function calls and return function response Parts and sources.
+
+    Returns:
+        tuple: (parts_list, sources_list) - sources limited to top 5 most relevant
+    """
     parts = []
+    all_sources = []
+
     for function_call in function_calls:
         name = function_call.name
         args = dict(function_call.args)
         print(f"  Calling: {name}({args})")
 
         if name == "search_archive":
-            response = search_archive(args["search_content"], collection, embed_func, top_k=top_k)
+            response_text, sources = search_archive(args["search_content"], collection, embed_func, top_k=top_k)
         elif name == "search_by_document":
-            response = search_by_document(
+            response_text, sources = search_by_document(
                 args["search_content"], args["doc"], collection, embed_func, top_k=top_k
             )
         elif name == "search_by_year":
-            response = search_by_year(
+            response_text, sources = search_by_year(
                 args["search_content"], args["year"], collection, embed_func, top_k=top_k
             )
         else:
             print(f"  Unknown function: {name}")
             continue
 
-        print(f"  Retrieved {len(response)} chars")
+        print(f"  Retrieved {len(response_text)} chars from {len(sources)} sources")
+
+        # Collect unique sources (deduplicate by document + excerpt)
+        for source in sources:
+            if source not in all_sources:
+                all_sources.append(source)
+
         parts.append(
             types.Part.from_function_response(
                 name=name,
-                response={"content": response},
+                response={"content": response_text},
             )
         )
-    return parts
+
+    # Limit to top 5 most relevant sources
+    return parts, all_sources[:5]
