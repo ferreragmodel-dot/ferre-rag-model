@@ -72,3 +72,7 @@ input-datasets
 secrets
 
 src/frontend-react/.next/
+
+*.code-workspace
+
+src/api-service/.local-persistent

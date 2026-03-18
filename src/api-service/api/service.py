@@ -8,6 +8,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 
 from api.routers import llm_agent_chat
+from api.utils.agent_orchestrator import create_chat_session, generate_chat_response
 
 # Setup FastAPI app
 app = FastAPI(title="API Server", description="API Server", version="v1")
@@ -220,12 +221,16 @@ async def get_archive_item_detail(
 
 
 @app.post("/archive/conversation")
-async def archive_conversation_stub(request: Request, payload: ConversationRequest):
-    """Stub conversation endpoint for the chat popup."""
-    if not FIRST_SEASON_IMAGE_FILES:
-        raise HTTPException(status_code=500, detail="No first-season images found in ferre-designs")
+async def archive_conversation(request: Request, payload: ConversationRequest):
+    """Run a single-turn RAG query for the archive conversation popup."""
+    rag_session = create_chat_session()
+    response_text = generate_chat_response(rag_session, {"content": payload.message})
 
-    selected_images = FIRST_SEASON_IMAGE_FILES[:3]
+    selected_images = random.sample(
+        FIRST_SEASON_IMAGE_FILES,
+        k=min(3, len(FIRST_SEASON_IMAGE_FILES)),
+    ) if FIRST_SEASON_IMAGE_FILES else []
+
     image_items = []
     for image_path in selected_images:
         relative_path = image_path.relative_to(DESIGNS_DIR).as_posix()
@@ -238,9 +243,9 @@ async def archive_conversation_stub(request: Request, payload: ConversationReque
 
     return {
         "query": payload.message,
-        "response": "Sample response ...",
+        "response": response_text,
         "images": image_items,
-        "tags": ["LEXICON", "GARMENTS"],
+        "tags": [],
     }
 
 

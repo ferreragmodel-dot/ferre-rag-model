@@ -6,6 +6,20 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 
+export interface ChatMessage {
+  message_id: string;
+  role: "user" | "assistant";
+  content: string;
+  image_path?: string;
+}
+
+export interface ChatData {
+  chat_id: string;
+  title: string;
+  dts: number;
+  messages: ChatMessage[];
+}
+
 export async function fetchLandingFeed(offset = 0, limit = 24): Promise<LandingFeedResponse> {
   const url = new URL("/archive/landing-feed", API_BASE_URL);
   url.searchParams.set("offset", String(offset));
@@ -55,4 +69,55 @@ export async function fetchArchiveConversation(message: string): Promise<Convers
   }
 
   return response.json() as Promise<ConversationResponse>;
+}
+
+// Chat endpoints for multi-turn conversations
+export async function startChat(message: string): Promise<ChatData> {
+  const url = new URL("/llm-agent/chats", API_BASE_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content: message }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to start chat: ${response.status}`);
+  }
+
+  return response.json() as Promise<ChatData>;
+}
+
+export async function continueChat(chatId: string, message: string): Promise<ChatData> {
+  const url = new URL(`/llm-agent/chats/${chatId}`, API_BASE_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content: message }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to continue chat: ${response.status}`);
+  }
+
+  return response.json() as Promise<ChatData>;
+}
+
+export async function getChat(chatId: string): Promise<ChatData> {
+  const url = new URL(`/llm-agent/chats/${chatId}`, API_BASE_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch chat: ${response.status}`);
+  }
+
+  return response.json() as Promise<ChatData>;
 }

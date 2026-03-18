@@ -29,6 +29,9 @@ async def get_chats(
 ):
     """Get all chats, optionally limited to a specific number"""
     print("x_session_id:", x_session_id)
+    # Generate a default session ID if none provided
+    if not x_session_id:
+        x_session_id = "default-session"
     return chat_manager.get_recent_chats(x_session_id, limit)
 
 
@@ -38,6 +41,9 @@ async def get_chat(
 ):
     """Get a specific chat by ID"""
     print("x_session_id:", x_session_id)
+    # Generate a default session ID if none provided
+    if not x_session_id:
+        x_session_id = "default-session"
     chat = chat_manager.get_chat(chat_id, x_session_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -51,6 +57,11 @@ async def start_chat_with_llm(
     message_dict = message.model_dump()
     print("content:", message_dict["content"])
     print("x_session_id:", x_session_id)
+
+    # Generate a default session ID if none provided
+    if not x_session_id:
+        x_session_id = "default-session"
+
     """Start a new chat with an initial message"""
     chat_id = str(uuid.uuid4())
     current_time = int(time.time())
@@ -99,6 +110,11 @@ async def continue_chat_with_llm(
     message_dict = message.model_dump()
     print("content:", message_dict["content"])
     print("x_session_id:", x_session_id)
+
+    # Generate a default session ID if none provided
+    if not x_session_id:
+        x_session_id = "default-session"
+
     """Add a message to an existing chat"""
     chat = chat_manager.get_chat(chat_id, x_session_id)
     if not chat:
