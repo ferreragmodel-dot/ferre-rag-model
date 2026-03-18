@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 
 
@@ -10,6 +11,7 @@ from fastapi import Depends
 from sqlmodel import Session, select
 
 from api.routers import llm_agent_chat
+from api.utils.agent_orchestrator import create_chat_session, generate_chat_response
 from api.db import create_db_and_tables, get_session
 import api.models.fashion_item  # noqa: F401 — registers table with SQLModel metadata
 from api.models.fashion_item import FashionItem
@@ -74,6 +76,29 @@ def _collect_design_images(designs_dir: Path) -> list[Path]:
     ]
 
 
+def _get_first_season_images(designs_dir: Path) -> list[Path]:
+    """Return image paths from the first season folder (lexicographic)."""
+    season_dirs = sorted(
+        [
+            path
+            for path in designs_dir.glob("*/*")
+            if path.is_dir()
+        ]
+    )
+
+    if not season_dirs:
+        return []
+
+    first_season_dir = season_dirs[0]
+    return sorted(
+        [
+            file_path
+            for file_path in first_season_dir.rglob("*")
+            if file_path.is_file() and file_path.suffix.lower() in IMAGE_EXTENSIONS
+        ]
+    )
+
+
 def _build_design_image_url(request: Request, source_path: str) -> str:
     return str(request.base_url).rstrip("/") + f"/design-images/{source_path}"
 
@@ -97,9 +122,14 @@ def _resolve_valid_source_path(source_path: str | None, fallback_path: str) -> s
 IMAGES_DIR = _find_images_dir()
 DESIGNS_DIR = _find_designs_dir()
 DESIGN_IMAGE_FILES = _collect_design_images(DESIGNS_DIR)
+FIRST_SEASON_IMAGE_FILES = _get_first_season_images(DESIGNS_DIR)
 
 app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
 app.mount("/design-images", StaticFiles(directory=str(DESIGNS_DIR)), name="design-images")
+
+
+class ConversationRequest(BaseModel):
+    message: str
 
 # Enable CORSMiddleware
 app.add_middleware(
@@ -183,6 +213,35 @@ async def get_archive_item_detail(
         "id": valid_source_path,
         "image_url": image_url,
         "metadata": item.model_dump(),
+    }
+
+
+@app.post("/archive/conversation")
+async def archive_conversation(request: Request, payload: ConversationRequest):
+    """Run a single-turn RAG query for the archive conversation popup."""
+    rag_session = create_chat_session()
+    response_text = generate_chat_response(rag_session, {"content": payload.message})
+
+    selected_images = random.sample(
+        FIRST_SEASON_IMAGE_FILES,
+        k=min(3, len(FIRST_SEASON_IMAGE_FILES)),
+    ) if FIRST_SEASON_IMAGE_FILES else []
+
+    image_items = []
+    for image_path in selected_images:
+        relative_path = image_path.relative_to(DESIGNS_DIR).as_posix()
+        image_items.append(
+            {
+                "source_path": relative_path,
+                "image_url": _build_design_image_url(request, relative_path),
+            }
+        )
+
+    return {
+        "query": payload.message,
+        "response": response_text,
+        "images": image_items,
+        "tags": [],
     }
 
 
