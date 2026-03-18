@@ -7,42 +7,26 @@ from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 
 
+from fastapi import Depends
+from sqlmodel import Session, select
+
 from api.routers import llm_agent_chat
 from api.utils.agent_orchestrator import create_chat_session, generate_chat_response
+from api.db import create_db_and_tables, get_session
+import api.models.fashion_item  # noqa: F401 — registers table with SQLModel metadata
+from api.models.fashion_item import FashionItem
+from api.seeds.seed import seed
 
 # Setup FastAPI app
 app = FastAPI(title="API Server", description="API Server", version="v1")
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"}
 
-STUB_METADATA = {
-    "outfit_id": "266",
-    "season": "FW1986-87",
-    "season_label": "Fall-Winter",
-    "label": "Gianfranco Ferré couture (gold lettering)",
-    "acquisition": None,
-    "look": "67",
-    "file": "266",
-    "inventory": "10267",
-    "object": "Evening dress",
-    "source": "F/W 1986-87 Couture Collection design specs",
-    "description": "Long dress with black velvet bodice and slim b&w chalkstripe silk cady skirt. Silk taffeta belt complete with decorative topstitching. Stole in chalkstripe cady with black organza on the underside. A stunning wrap construction with all the flair of a giant ribbon.",
-    "exhibitions": "Italian Style since 1945, Victoria and Albert Museum, London, 2015",
-    "size": "made to measure",
-    "materials": "Black&white chalkstripe print silk cady (Taroni, Como; art. 6422, des. 25, col. 1), silk velvet (Redaelli velvet; art. Prestige super; col. black), silk taffeta, silk organza",
-    "present_location": "FGF space c/o Open Care - Milan",
-    "remark": "Bordering between sleek feminine severity and slinky sari type silhouette, this dress makes a strong impact on both graphic and chromatic levels. Another point of interest is the revisitation in evening version of a supremely mannish chalkstripe pattern.",
-    "bibliography": None,
-    "designer": "Gianfranco Ferré",
-    "working_process": "Parallel topstitching with 1 cm spacing for bow",
-    "condition": "Good",
-    "collection": "Couture",
-    "year": "1986",
-    "match_type": "exact",
-    "collection_line": "ALTA-MODA",
-    "asset_type": "fashion_show_drawings",
-    "source_path": "ALTA-MODA/FW1986-87/fashion_show_drawings/16537.jpg",
-}
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+    seed()
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"}
 
 
 def _safe_parents(path: Path, n: int):
@@ -119,8 +103,7 @@ def _build_design_image_url(request: Request, source_path: str) -> str:
     return str(request.base_url).rstrip("/") + f"/design-images/{source_path}"
 
 
-def _resolve_valid_source_path(source_path: str | None) -> str:
-    fallback_path = STUB_METADATA["source_path"]
+def _resolve_valid_source_path(source_path: str | None, fallback_path: str) -> str:
     if not source_path:
         return fallback_path
 
@@ -207,16 +190,29 @@ async def get_landing_feed(
 async def get_archive_item_detail(
     request: Request,
     source_path: str | None = Query(default=None),
+    session: Session = Depends(get_session),
 ):
-    """Stub endpoint for image detail popup metadata."""
-    valid_source_path = _resolve_valid_source_path(source_path)
-    metadata = {**STUB_METADATA, "source_path": valid_source_path}
+    """Return metadata for a fashion item by source_path, falling back to first DB item."""
+    item: FashionItem | None = None
+
+    if source_path:
+        item = session.exec(
+            select(FashionItem).where(FashionItem.source_path == source_path)
+        ).first()
+
+    if item is None:
+        item = session.exec(select(FashionItem)).first()
+
+    if item is None:
+        raise HTTPException(status_code=404, detail="No fashion items found in database")
+
+    valid_source_path = _resolve_valid_source_path(source_path, item.source_path)
     image_url = _build_design_image_url(request, valid_source_path)
 
     return {
         "id": valid_source_path,
         "image_url": image_url,
-        "metadata": metadata,
+        "metadata": item.model_dump(),
     }
 
 
