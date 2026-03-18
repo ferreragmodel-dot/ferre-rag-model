@@ -11,6 +11,8 @@ from google import genai
 from google.genai import types
 from google.genai.types import Content, Part
 from google.genai import errors
+import vertexai
+from vertexai.vision_models import MultiModalEmbeddingModel
 
 from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls
 
@@ -19,6 +21,7 @@ GCP_PROJECT = os.environ["GCP_PROJECT"]
 GCP_LOCATION = "us-central1"
 EMBEDDING_MODEL = "text-embedding-004"
 EMBEDDING_DIMENSION = 256
+MULTIMODAL_EMBEDDING_DIMENSION = 1408  # For image embeddings
 GENERATIVE_MODEL = "gemini-2.0-flash-001"
 CHROMADB_HOST = os.environ["CHROMADB_HOST"]
 CHROMADB_PORT = os.environ["CHROMADB_PORT"]
@@ -27,6 +30,10 @@ CHROMADB_PORT = os.environ["CHROMADB_PORT"]
 #                       Initialize the LLM Client                           #
 llm_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 #############################################################################
+
+# Initialize Vertex AI for multimodal embeddings
+vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
+multimodal_model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
 
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
@@ -88,6 +95,27 @@ def generate_query_embedding(query: str) -> List[float]:
         config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIMENSION),
     )
     return response.embeddings[0].values
+
+
+def generate_image_query_embedding(query: str) -> List[float]:
+    """Generate a multimodal embedding vector for image search.
+
+    Uses the multimodalembedding@001 model to generate text embeddings that are
+    in the same 1408-dimensional space as the image embeddings, allowing for
+    proper semantic similarity search.
+    """
+    try:
+        response = multimodal_model.get_embeddings(
+            contextual_text=query,
+            dimension=MULTIMODAL_EMBEDDING_DIMENSION
+        )
+        if response and response.text_embedding:
+            return response.text_embedding
+        else:
+            raise ValueError("No text embeddings returned from multimodal model")
+    except Exception as e:
+        print(f"Error generating multimodal embedding: {e}")
+        raise
 
 
 def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
