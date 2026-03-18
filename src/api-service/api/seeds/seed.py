@@ -1,5 +1,5 @@
 """
-Seed the database with fashion items from fashion_items.json.
+Seed the database with fashion items from initial_database_loading.jsonl.
 Run from inside the container:
     python -m api.seeds.seed
 """
@@ -17,11 +17,15 @@ SEEDS_DIR = Path(__file__).parent
 def seed():
     create_db_and_tables()
 
-    with open(SEEDS_DIR / "fashion_items.json", encoding="utf-8") as f:
-        items = json.load(f)
+    valid_fields = set(FashionItem.model_fields.keys())
+
+    with open(SEEDS_DIR / "initial_database_loading.jsonl", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
 
     with Session(engine) as session:
-        for item_data in items:
+        for raw in lines:
+            item_data = {k: v for k, v in json.loads(raw).items() if k in valid_fields}
+
             existing = session.exec(
                 select(FashionItem).where(FashionItem.source_path == item_data["source_path"])
             ).first()
