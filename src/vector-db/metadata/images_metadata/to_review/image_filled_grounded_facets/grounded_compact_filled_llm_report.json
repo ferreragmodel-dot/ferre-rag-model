@@ -1,0 +1,369 @@
+{
+  "phase": "phase04",
+  "mode": "run",
+  "input": "metadata\\derived_grounded_facets\\grounded_compact_llm.jsonl",
+  "normalized_input": "metadata/normalized_grounded/grounded_raw.jsonl",
+  "images_root": "C:\\Users\\filip\\Desktop\\Polimi\\ASP\\AI4Fashion\\ferre-rag-model\\src\\vector-db\\input-datasets\\ferre-designs",
+  "output": "metadata\\image_filled_grounded_facets\\grounded_compact_filled_llm.jsonl",
+  "model": "gemini-2.0-flash-001",
+  "prompt_version": "phase04_image_fill_grouped_v2",
+  "processed": 691,
+  "group_calls": 11,
+  "group_reused": 60,
+  "skipped_resume": 0,
+  "skipped_text_only": 620,
+  "missing_image": 0,
+  "llm_errors": 0,
+  "applied": 71,
+  "accepted_without_review": 71,
+  "accepted_with_review": 0,
+  "rejected_low_confidence": 0,
+  "by_strategy": {
+    "text_only": 620,
+    "object_plus_image_fill": 64,
+    "image_only": 7
+  },
+  "by_asset_type": {
+    "fashion_show_drawings": 80,
+    "fashion_show_photos": 321,
+    "technical_sheets": 87,
+    "technical_drawings": 84,
+    "press_coverage": 37,
+    "unknown": 6,
+    "advertising": 37,
+    "material_sheets": 35,
+    "embroidery": 4
+  },
+  "plan_summary": {
+    "total_records": 691,
+    "needs_image_fill_records": 84,
+    "needs_image_fill_groups": 13,
+    "by_asset_type": {
+      "fashion_show_photos": 44,
+      "press_coverage": 3,
+      "technical_sheets": 7,
+      "technical_drawings": 8,
+      "fashion_show_drawings": 11,
+      "advertising": 6,
+      "material_sheets": 5
+    },
+    "by_strategy": {
+      "object_plus_image_fill": 64,
+      "text_only": 13,
+      "image_only": 7
+    },
+    "sample_candidates": [
+      {
+        "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos/22113.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/fashion_show_photos/22113.jpg",
+        "asset_type": "fashion_show_photos",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos/61349.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/fashion_show_photos/61349.jpg",
+        "asset_type": "fashion_show_photos",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.53,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos/60359.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/fashion_show_photos/60359.jpg",
+        "asset_type": "fashion_show_photos",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos_-_milan/52567.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/fashion_show_photos_-_milan/52567.jpg",
+        "asset_type": "fashion_show_photos",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos_-_milan/52568.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/fashion_show_photos_-_milan/52568.jpg",
+        "asset_type": "fashion_show_photos",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/press_coverage/monthly/66813.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/press_coverage/monthly/66813.jpg",
+        "asset_type": "press_coverage",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/technical_sheets/63160.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/technical_sheets/63160.jpg",
+        "asset_type": "technical_sheets",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/technical_drawings/capi_in_tessuto/42974.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/technical_drawings/capi_in_tessuto/42974.jpg",
+        "asset_type": "technical_drawings",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1986-87/technical_drawings/capi_in_tessuto/42975.jpg",
+        "source_path": "ALTA-MODA/FW1986-87/technical_drawings/capi_in_tessuto/42975.jpg",
+        "asset_type": "technical_drawings",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1986-87::ALTA-MODA::245"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1987-88/fashion_show_drawings/40054.jpg",
+        "source_path": "ALTA-MODA/FW1987-88/fashion_show_drawings/40054.jpg",
+        "asset_type": "fashion_show_drawings",
+        "strategy": "object_plus_image_fill",
+        "facet_confidence": 0.59,
+        "group_key": "FW1987-88::ALTA-MODA::426"
+      }
+    ]
+  },
+  "samples": [
+    {
+      "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos/22113.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "fashion_show_photos",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos/61349.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "fashion_show_photos",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "garments",
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags",
+        "description_short"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos/60359.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "fashion_show_photos",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos_-_milan/52567.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "fashion_show_photos",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/fashion_show_photos_-_milan/52568.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "fashion_show_photos",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/press_coverage/monthly/66813.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "press_coverage",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/technical_sheets/63160.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "technical_sheets",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/technical_drawings/capi_in_tessuto/42974.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "technical_drawings",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1986-87/technical_drawings/capi_in_tessuto/42975.jpg",
+      "group_key": "FW1986-87::ALTA-MODA::245",
+      "group_size": 9,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "technical_drawings",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags",
+        "closure_tags",
+        "embellishment_tags",
+        "style_tags"
+      ]
+    },
+    {
+      "record_id": "ALTA-MODA/FW1987-88/fashion_show_drawings/40054.jpg",
+      "group_key": "FW1987-88::ALTA-MODA::426",
+      "group_size": 4,
+      "strategy": "object_plus_image_fill",
+      "group_strategy": "object_plus_image_fill",
+      "asset_type": "fashion_show_drawings",
+      "applied": true,
+      "generated_confidence": 0.95,
+      "needs_review": false,
+      "image_fill_fields": [
+        "colors",
+        "material_families",
+        "patterns",
+        "silhouette_tags",
+        "length_tags",
+        "neckline_tags",
+        "sleeve_tags"
+      ]
+    }
+  ]
+}

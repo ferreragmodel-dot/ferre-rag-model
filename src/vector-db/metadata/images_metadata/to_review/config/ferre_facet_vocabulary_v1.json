@@ -1,0 +1,618 @@
+{
+  "schema_version": "ferre_facet_v1",
+  "description": "Ferré-specific compact vocabulary for retrieval facets.",
+  "enum_fields": [
+    "garments",
+    "colors",
+    "material_families",
+    "patterns",
+    "silhouette_tags",
+    "length_tags",
+    "neckline_tags",
+    "sleeve_tags",
+    "closure_tags",
+    "embellishment_tags",
+    "style_tags"
+  ],
+  "free_text_fields": [
+    "description_raw",
+    "materials_raw",
+    "remark_raw",
+    "description_short",
+    "remark_short"
+  ],
+  "forbidden_in_facets": {
+    "supplier_names": true,
+    "article_codes": true,
+    "color_codes": true,
+    "percentages": true,
+    "comma_joined_arrays": true,
+    "prose_inside_arrays": true
+  },
+  "facet_fields": {
+    "garments": [
+      "jacket",
+      "coat",
+      "dress",
+      "evening_dress",
+      "skirt",
+      "shirt",
+      "t_shirt",
+      "tunic",
+      "blouse",
+      "top",
+      "bustier",
+      "bodice",
+      "cape",
+      "bolero",
+      "shawl",
+      "stole",
+      "duster",
+      "pants",
+      "overskirt",
+      "underskirt",
+      "belt",
+      "sash",
+      "hat"
+    ],
+    "colors": [
+      "black",
+      "white",
+      "gray",
+      "dove_gray",
+      "beige",
+      "ecru",
+      "ivory",
+      "red",
+      "coral",
+      "pink",
+      "lilac",
+      "blue",
+      "navy",
+      "brown",
+      "green",
+      "yellow",
+      "gold",
+      "silver",
+      "straw",
+      "bois_de_rose"
+    ],
+    "material_families": [
+      "silk",
+      "wool",
+      "cotton",
+      "nylon",
+      "velvet",
+      "lace",
+      "tulle",
+      "organza",
+      "georgette",
+      "satin",
+      "faille",
+      "gazar",
+      "cady",
+      "chiffon",
+      "jersey",
+      "poplin",
+      "taffeta",
+      "mousseline",
+      "crepe",
+      "grosgrain",
+      "raffia",
+      "leather",
+      "python",
+      "crocodile",
+      "fur",
+      "fox_fur",
+      "alpaca",
+      "cashmere",
+      "mohair",
+      "crystal_beads",
+      "jet_beads"
+    ],
+    "patterns": [
+      "solid",
+      "striped",
+      "pinstripe",
+      "chalkstripe",
+      "plaid",
+      "scotch_plaid",
+      "polka_dot",
+      "zigzag",
+      "floral",
+      "paisley",
+      "geometric",
+      "printed"
+    ],
+    "silhouette_tags": [
+      "slim",
+      "straight",
+      "fitted",
+      "boxy",
+      "structured",
+      "tubular",
+      "tube",
+      "circular",
+      "a_line",
+      "flared",
+      "trumpet",
+      "bell",
+      "kimono",
+      "voluminous",
+      "fluid",
+      "draped",
+      "amphora"
+    ],
+    "length_tags": [
+      "hip_length",
+      "upper_hip_length",
+      "mid_thigh_length",
+      "knee_length",
+      "ankle_length",
+      "floor_length",
+      "above_knee",
+      "seven_eighth_length"
+    ],
+    "neckline_tags": [
+      "round_neck",
+      "crew_neck",
+      "scoop_neck",
+      "high_neck",
+      "halter",
+      "strapless",
+      "peter_pan_collar",
+      "mannish_collar",
+      "shawl_collar",
+      "hood"
+    ],
+    "sleeve_tags": [
+      "sleeveless",
+      "short_sleeve",
+      "long_sleeve",
+      "wide_sleeve",
+      "kimono_sleeve",
+      "puff_sleeve",
+      "gigot_sleeve",
+      "tubular_sleeve",
+      "elbow_length",
+      "three_quarter_sleeve"
+    ],
+    "closure_tags": [
+      "single_breasted",
+      "one_button",
+      "back_zip",
+      "side_zip",
+      "button_front",
+      "crossover",
+      "no_fastening",
+      "hook_and_eye"
+    ],
+    "embellishment_tags": [
+      "embroidery",
+      "cornely_embroidery",
+      "beading",
+      "jet_beading",
+      "applique",
+      "lace_applique",
+      "topstitching",
+      "pleating",
+      "sunburst_pleating",
+      "intarsia",
+      "passementerie",
+      "ribbon_application",
+      "openwork",
+      "ajour",
+      "tassels",
+      "ruffles"
+    ],
+    "style_tags": [
+      "masculine_feminine",
+      "power_suit",
+      "dandy",
+      "oriental",
+      "hollywood_glamour",
+      "romantic",
+      "lingerie_inspired",
+      "torero_inspired",
+      "maghreb_inspired",
+      "sculptural",
+      "origami_like",
+      "aristocratic",
+      "daywear",
+      "eveningwear"
+    ]
+  },
+  "synonym_maps": {
+    "garments": {
+      "abito": "dress",
+      "abito da sera": "evening_dress",
+      "evening gown": "evening_dress",
+      "gonna": "skirt",
+      "giacca": "jacket",
+      "camicia": "shirt",
+      "t-shirt": "t_shirt",
+      "t shirt": "t_shirt",
+      "bolero jacket": "bolero",
+      "camicia e gonna": [
+        "shirt",
+        "skirt"
+      ],
+      "jacket/skirt/t-shirt outfit": [
+        "jacket",
+        "skirt",
+        "t_shirt"
+      ],
+      "tunic and skirt outfit": [
+        "tunic",
+        "skirt"
+      ],
+      "duster and pants outfit": [
+        "duster",
+        "pants"
+      ],
+      "fox coat and fox dress": [
+        "coat",
+        "dress"
+      ]
+    },
+    "colors": {
+      "dark blue": "navy",
+      "navy blue": "navy",
+      "dove gray": "dove_gray",
+      "natural hue of white": "white",
+      "straw color": "straw",
+      "bois de rose": "bois_de_rose"
+    },
+    "material_families": {
+      "crêpe": "crepe",
+      "crepe de chine": "crepe",
+      "gros grain": "grosgrain",
+      "cashmire": "cashmere",
+      "cachemire": "cashmere",
+      "cachmire": "cashmere",
+      "wool/silk satin": [
+        "wool",
+        "silk",
+        "satin"
+      ],
+      "crystal jet": [
+        "jet_beads"
+      ],
+      "silver fox fur": [
+        "fox_fur",
+        "fur"
+      ],
+      "genuine crocodile leather": [
+        "crocodile",
+        "leather"
+      ],
+      "python leather": [
+        "python",
+        "leather"
+      ]
+    },
+    "patterns": {
+      "scotch plaid": "scotch_plaid",
+      "polkadot": "polka_dot",
+      "dot": "polka_dot",
+      "bouquet design": "floral",
+      "flower decors": "floral",
+      "white horizontal 8 cm parallel striping": "striped",
+      "vichy": "geometric"
+    },
+    "silhouette_tags": {
+      "a line": "a_line",
+      "a-line": "a_line",
+      "tube style": "tube",
+      "tubular style": "tubular"
+    },
+    "embellishment_tags": {
+      "applicazioni": "applique",
+      "appliqué": "applique",
+      "lace in appliqué form": [
+        "lace_applique",
+        "applique"
+      ],
+      "all over glass tube beading": [
+        "beading"
+      ],
+      "cornely (machine) embroidery": [
+        "cornely_embroidery",
+        "embroidery"
+      ],
+      "openwork (ajour embroidery) edging": [
+        "openwork",
+        "ajour"
+      ]
+    },
+    "style_tags": {
+      "masculine/feminine": "masculine_feminine",
+      "masculine and feminine": "masculine_feminine",
+      "hollywood and cinecittà glamour": "hollywood_glamour",
+      "romanticism": "romantic",
+      "oriental flair": "oriental",
+      "lingerie": "lingerie_inspired",
+      "power suit": "power_suit",
+      "dandyish": "dandy",
+      "maghrebian burnus": "maghreb_inspired",
+      "origami technique": "origami_like"
+    }
+  },
+  "normalization_rules": {
+    "object_labels_are_decomposed": true,
+    "null_arrays_are_omitted": true,
+    "array_values_are_unique": true,
+    "array_values_are_lowercase": true
+  },
+  "vertex_response_schema_template": {
+    "type": "object",
+    "properties": {
+      "garments": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "jacket",
+            "coat",
+            "dress",
+            "evening_dress",
+            "skirt",
+            "shirt",
+            "t_shirt",
+            "tunic",
+            "blouse",
+            "top",
+            "bustier",
+            "bodice",
+            "cape",
+            "bolero",
+            "shawl",
+            "stole",
+            "duster",
+            "pants",
+            "overskirt",
+            "underskirt",
+            "belt",
+            "sash",
+            "hat"
+          ]
+        }
+      },
+      "colors": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "black",
+            "white",
+            "gray",
+            "dove_gray",
+            "beige",
+            "ecru",
+            "ivory",
+            "red",
+            "coral",
+            "pink",
+            "lilac",
+            "blue",
+            "navy",
+            "brown",
+            "green",
+            "yellow",
+            "gold",
+            "silver",
+            "straw",
+            "bois_de_rose"
+          ]
+        }
+      },
+      "material_families": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "silk",
+            "wool",
+            "cotton",
+            "nylon",
+            "velvet",
+            "lace",
+            "tulle",
+            "organza",
+            "georgette",
+            "satin",
+            "faille",
+            "gazar",
+            "cady",
+            "chiffon",
+            "jersey",
+            "poplin",
+            "taffeta",
+            "mousseline",
+            "crepe",
+            "grosgrain",
+            "raffia",
+            "leather",
+            "python",
+            "crocodile",
+            "fur",
+            "fox_fur",
+            "alpaca",
+            "cashmere",
+            "mohair",
+            "crystal_beads",
+            "jet_beads"
+          ]
+        }
+      },
+      "patterns": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "solid",
+            "striped",
+            "pinstripe",
+            "chalkstripe",
+            "plaid",
+            "scotch_plaid",
+            "polka_dot",
+            "zigzag",
+            "floral",
+            "paisley",
+            "geometric",
+            "printed"
+          ]
+        }
+      },
+      "silhouette_tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "slim",
+            "straight",
+            "fitted",
+            "boxy",
+            "structured",
+            "tubular",
+            "tube",
+            "circular",
+            "a_line",
+            "flared",
+            "trumpet",
+            "bell",
+            "kimono",
+            "voluminous",
+            "fluid",
+            "draped",
+            "amphora"
+          ]
+        }
+      },
+      "length_tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "hip_length",
+            "upper_hip_length",
+            "mid_thigh_length",
+            "knee_length",
+            "ankle_length",
+            "floor_length",
+            "above_knee",
+            "seven_eighth_length"
+          ]
+        }
+      },
+      "neckline_tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "round_neck",
+            "crew_neck",
+            "scoop_neck",
+            "high_neck",
+            "halter",
+            "strapless",
+            "peter_pan_collar",
+            "mannish_collar",
+            "shawl_collar",
+            "hood"
+          ]
+        }
+      },
+      "sleeve_tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "sleeveless",
+            "short_sleeve",
+            "long_sleeve",
+            "wide_sleeve",
+            "kimono_sleeve",
+            "puff_sleeve",
+            "gigot_sleeve",
+            "tubular_sleeve",
+            "elbow_length",
+            "three_quarter_sleeve"
+          ]
+        }
+      },
+      "closure_tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "single_breasted",
+            "one_button",
+            "back_zip",
+            "side_zip",
+            "button_front",
+            "crossover",
+            "no_fastening",
+            "hook_and_eye"
+          ]
+        }
+      },
+      "embellishment_tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "embroidery",
+            "cornely_embroidery",
+            "beading",
+            "jet_beading",
+            "applique",
+            "lace_applique",
+            "topstitching",
+            "pleating",
+            "sunburst_pleating",
+            "intarsia",
+            "passementerie",
+            "ribbon_application",
+            "openwork",
+            "ajour",
+            "tassels",
+            "ruffles"
+          ]
+        }
+      },
+      "style_tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "masculine_feminine",
+            "power_suit",
+            "dandy",
+            "oriental",
+            "hollywood_glamour",
+            "romantic",
+            "lingerie_inspired",
+            "torero_inspired",
+            "maghreb_inspired",
+            "sculptural",
+            "origami_like",
+            "aristocratic",
+            "daywear",
+            "eveningwear"
+          ]
+        }
+      },
+      "description_short": {
+        "type": "string"
+      },
+      "remark_short": {
+        "type": "string"
+      },
+      "facet_confidence": {
+        "type": "number"
+      }
+    }
+  }
+}

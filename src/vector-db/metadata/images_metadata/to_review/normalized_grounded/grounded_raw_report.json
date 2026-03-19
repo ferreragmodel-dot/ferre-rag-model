@@ -1,0 +1,97 @@
+{
+  "schema_version": "grounded_raw_v1",
+  "input_dir": "metadata/grounded_image_map",
+  "output_jsonl": "metadata/normalized_grounded/grounded_raw.jsonl",
+  "total_records": 691,
+  "season_counts": {
+    "FW1986-87": 122,
+    "FW1987-88": 116,
+    "FW1988-89": 155,
+    "SS1987": 79,
+    "SS1988": 115,
+    "SS1989": 104
+  },
+  "asset_type_counts": {
+    "fashion_show_drawings": 80,
+    "fashion_show_photos": 321,
+    "technical_sheets": 87,
+    "technical_drawings": 84,
+    "press_coverage": 37,
+    "unknown": 6,
+    "advertising": 37,
+    "material_sheets": 35,
+    "embroidery": 4
+  },
+  "raw_completeness_counts": {
+    "full": 607,
+    "partial": 77,
+    "minimal": 7
+  },
+  "repair_counts": {
+    "object::Three-piece evenng dress->Three-piece evening dress": 12,
+    "condition::Goog->Good": 9,
+    "object::Completo tre prezzi->Completo tre pezzi": 8
+  },
+  "repair_examples": {
+    "object::Three-piece evenng dress->Three-piece evening dress": [
+      {
+        "record_id": "ALTA-MODA/FW1988-89/technical_sheets/59151.jpg",
+        "field": "object",
+        "original": "Three-piece evenng dress",
+        "repaired": "Three-piece evening dress"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1988-89/material_sheets/65876.jpg",
+        "field": "object",
+        "original": "Three-piece evenng dress",
+        "repaired": "Three-piece evening dress"
+      },
+      {
+        "record_id": "ALTA-MODA/FW1988-89/fashion_show_drawings/33192.jpg",
+        "field": "object",
+        "original": "Three-piece evenng dress",
+        "repaired": "Three-piece evening dress"
+      }
+    ],
+    "condition::Goog->Good": [
+      {
+        "record_id": "ALTA-MODA/SS1988/fashion_show_drawings/34351.jpg",
+        "field": "condition",
+        "original": "Goog",
+        "repaired": "Good"
+      },
+      {
+        "record_id": "ALTA-MODA/SS1988/fashion_show_photos/47544.jpg",
+        "field": "condition",
+        "original": "Goog",
+        "repaired": "Good"
+      },
+      {
+        "record_id": "ALTA-MODA/SS1988/fashion_show_photos/60581.jpg",
+        "field": "condition",
+        "original": "Goog",
+        "repaired": "Good"
+      }
+    ],
+    "object::Completo tre prezzi->Completo tre pezzi": [
+      {
+        "record_id": "ALTA-MODA/SS1988/material_sheets/62478.jpg",
+        "field": "object",
+        "original": "Completo tre prezzi",
+        "repaired": "Completo tre pezzi"
+      },
+      {
+        "record_id": "ALTA-MODA/SS1988/fashion_show_drawings/34410.jpg",
+        "field": "object",
+        "original": "Completo tre prezzi",
+        "repaired": "Completo tre pezzi"
+      },
+      {
+        "record_id": "ALTA-MODA/SS1988/fashion_show_photos/47604.jpg",
+        "field": "object",
+        "original": "Completo tre prezzi",
+        "repaired": "Completo tre pezzi"
+      }
+    ]
+  }
+}

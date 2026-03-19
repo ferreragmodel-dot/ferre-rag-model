@@ -1,0 +1,65 @@
+{
+  "schema_version": "ferre_facets_v1",
+  "input_jsonl": "metadata/normalized_grounded/grounded_raw.jsonl",
+  "vocabulary": "metadata/config/ferre_facet_vocabulary_v1.json",
+  "output_jsonl": "metadata/derived_grounded_facets/grounded_compact.jsonl",
+  "total_records": 691,
+  "season_counts": {
+    "FW1986-87": 122,
+    "FW1987-88": 116,
+    "FW1988-89": 155,
+    "SS1987": 79,
+    "SS1988": 115,
+    "SS1989": 104
+  },
+  "asset_type_counts": {
+    "fashion_show_drawings": 80,
+    "fashion_show_photos": 321,
+    "technical_sheets": 87,
+    "technical_drawings": 84,
+    "press_coverage": 37,
+    "unknown": 6,
+    "advertising": 37,
+    "material_sheets": 35,
+    "embroidery": 4
+  },
+  "needs_image_fill_counts": {
+    "False": 607,
+    "True": 84
+  },
+  "validation_counts": {
+    "True": 691
+  },
+  "confidence_bands": {
+    ">=0.75": 620,
+    "<0.50": 35,
+    "0.50-0.74": 36
+  },
+  "nonempty_field_counts": {
+    "garments": 656,
+    "colors": 577,
+    "material_families": 620,
+    "silhouette_tags": 522,
+    "length_tags": 413,
+    "neckline_tags": 242,
+    "sleeve_tags": 244,
+    "closure_tags": 143,
+    "embellishment_tags": 503,
+    "patterns": 400,
+    "style_tags": 383
+  },
+  "avg_values_per_nonempty_field": {
+    "garments": 3.393,
+    "colors": 2.939,
+    "material_families": 4.311,
+    "patterns": 1.423,
+    "silhouette_tags": 2.038,
+    "length_tags": 1.165,
+    "neckline_tags": 1.079,
+    "sleeve_tags": 1.082,
+    "closure_tags": 1.371,
+    "embellishment_tags": 1.956,
+    "style_tags": 1.125
+  },
+  "validation_error_examples": {}
+}
