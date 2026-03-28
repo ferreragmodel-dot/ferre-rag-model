@@ -26,7 +26,7 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 - Docker installed
 - Clone this repository
 - Ferré archive PDFs (add to `src/vector-db/input-datasets/ferre-notes-lessons/`)
-- Ferré fashion show images (add to `src/vector-db/input-datasets/ferre-designs/ALTA-MODA/[SEASON]/`)
+- Ferré fashion show images (add to `src/vector-db/input-datasets/ferre-designs/Dataset DataShack 2026/[SEASON]/`)
 - GCP service account with Vertex AI access
 
 ## Secrets & Environment Setup
@@ -51,9 +51,9 @@ Desktop/  (or wherever you cloned the repo)
     │   ├── input-datasets/
     │   │   ├── ferre-notes-lessons/   # Place Ferré PDFs here
     │   │   └── ferre-designs/         # Fashion show images organized by season
-    │   │       └── ALTA-MODA/
-    │   │           ├── FW1986-87/
-    │   │           ├── SS1987/
+    │   │       └── Dataset DataShack 2026/
+    │   │           ├── ALTA MODA 1986-87 FW/
+    │   │           ├── ALTA MODA 1987 SS/
     │   │           └── ...
     │   ├── outputs/                   # Chunked and embedded data
     │   ├── metadata/                  # Archive metadata JSON files
@@ -339,3 +339,5 @@ docker image ls
 - Cecilia Zheng
 - Asia Capezzuoli
 - Stefan Golic
+
+Note: the contents of `Dataset DataShack 2026` are exactly the same as the contents of the OneDrive folder shared by the Centro di Ricerca Ferr� for the purposes of this project.

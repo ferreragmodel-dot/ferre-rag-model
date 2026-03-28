@@ -4,7 +4,7 @@
 Goal
 ----
 Given a season folder like:
-  input-datasets/ferre-designs/ALTA-MODA/SS1987
+  input-datasets/ferre-designs/Dataset DataShack 2026/ALTA MODA 1987 SS
 this script finds each pair:
   Technical descriptions/<id>.pdf        (text fields)
   Technical descriptions/<id>_1.pdf      (images grouped by red section headers)
@@ -145,6 +145,8 @@ FOLDER_TO_SECTION: Dict[str, str] = {
 }
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+PRIMARY_DATASET_ROOT_NAME = "dataset datashack 2026"
+DATASET_ROOT_NAMES = {PRIMARY_DATASET_ROOT_NAME}
 
 
 @dataclass
@@ -618,6 +620,31 @@ def list_image_files(root_dir: str) -> List[str]:
     return out
 
 
+def _cache_paths_match_season(paths: Iterable[str], season_dir: str, *, sample_size: int = 25) -> bool:
+    season_dir_abs = os.path.abspath(season_dir)
+    checked = 0
+
+    for raw_path in paths:
+        if not isinstance(raw_path, str) or not raw_path:
+            return False
+        if checked >= sample_size:
+            break
+
+        abs_path = os.path.abspath(raw_path)
+        try:
+            common = os.path.commonpath([season_dir_abs, abs_path])
+        except ValueError:
+            return False
+
+        if common != season_dir_abs:
+            return False
+        if not os.path.exists(abs_path):
+            return False
+        checked += 1
+
+    return checked > 0
+
+
 def build_candidate_index(season_dir: str, *, cache_path: Optional[str] = None) -> Dict[str, Dict[str, int]]:
     """Return section_key -> {abs_path -> dhash}.
 
@@ -626,11 +653,18 @@ def build_candidate_index(season_dir: str, *, cache_path: Optional[str] = None) 
     if cache_path and os.path.exists(cache_path):
         with open(cache_path, "r", encoding="utf-8") as f:
             cached = json.load(f)
-        # cached format: {section_key: {abs_path: hash_int_as_str}}
-        return {
-            sec: {p: int(h) for p, h in mp.items()}
-            for sec, mp in cached.items()
-        }
+        if isinstance(cached, dict):
+            cached_paths: List[str] = []
+            for mp in cached.values():
+                if isinstance(mp, dict):
+                    cached_paths.extend(str(p) for p in mp.keys())
+            if _cache_paths_match_season(cached_paths, season_dir):
+                # cached format: {section_key: {abs_path: hash_int_as_str}}
+                return {
+                    sec: {p: int(h) for p, h in mp.items()}
+                    for sec, mp in cached.items()
+                    if isinstance(mp, dict)
+                }
 
     index: Dict[str, Dict[str, int]] = {}
 
@@ -666,7 +700,8 @@ def build_global_image_index(season_dir: str, *, cache_path: Optional[str] = Non
     if cache_path and os.path.exists(cache_path):
         with open(cache_path, "r", encoding="utf-8") as f:
             cached = json.load(f)
-        return {p: int(h) for p, h in cached.items()}
+        if isinstance(cached, dict) and _cache_paths_match_season(cached.keys(), season_dir):
+            return {p: int(h) for p, h in cached.items()}
 
     paths = list_image_files(season_dir)
     mp: Dict[str, int] = {}
@@ -687,50 +722,82 @@ def build_global_image_index(season_dir: str, *, cache_path: Optional[str] = Non
 # -------------------------
 
 def _to_db_dir(seg: str) -> str:
-    # folders between season and filename -> lowercase + underscores
+    # normalize exported path segments -> lowercase + underscores
     return re.sub(r"\s+", "_", seg.strip()).lower()
 
 def _to_db_file(seg: str) -> str:
-    # filenames: keep case, only replace spaces with underscores
-    return re.sub(r"\s+", "_", seg.strip())
+    return _to_db_dir(seg)
+
+
+def _find_dataset_root_part(parts: Iterable[str]) -> Optional[str]:
+    parts_list = list(parts)
+    for part in parts_list:
+        if _norm(part) == PRIMARY_DATASET_ROOT_NAME:
+            return part
+    for part in reversed(parts_list):
+        if _norm(part) in DATASET_ROOT_NAMES:
+            return part
+    return None
+
+
+def dataset_root_slug_from_path(path: str) -> str:
+    parts = Path(os.path.abspath(path)).parts
+    dataset_root = _find_dataset_root_part(parts)
+    if dataset_root is not None:
+        return _to_db_file(dataset_root)
+    return "dataset"
+
+
+def season_output_slug(season_dir: str) -> str:
+    season_name = os.path.basename(os.path.abspath(season_dir).rstrip("/\\"))
+    season_slug = _to_db_file(season_name)
+    dataset_slug = dataset_root_slug_from_path(season_dir)
+    return f"{dataset_slug}_{season_slug}"
+
+
+def cache_root_dir() -> Path:
+    return Path(__file__).resolve().parent / ".cache"
+
+
+def season_cache_key(season_dir: str) -> str:
+    abs_path = os.path.abspath(season_dir)
+    parts = list(Path(abs_path).parts)
+    dataset_root = _find_dataset_root_part(parts)
+    if dataset_root is not None:
+        anchor = parts.index(dataset_root)
+        rel_parts = parts[anchor:]
+    else:
+        rel_parts = parts[-2:]
+    return "__".join(_to_db_file(p) for p in rel_parts)
+
+
+def season_cache_paths(season_dir: str, *, global_match: bool) -> Tuple[str, Optional[str]]:
+    root = cache_root_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    key = season_cache_key(season_dir)
+    cache_path = str(root / f"{key}__sections.json")
+    cache_all = str(root / f"{key}__global.json") if global_match else None
+    return cache_path, cache_all
 
 def _relpath(path: str, base: str) -> str:
     """
-    Return a DB path starting at ALTA-MODA/<SEASON>/... .
-    Keep ALTA-MODA and the season folder as-is.
-    Lowercase only the folder(s) between season and filename.
-    Replace spaces with underscores everywhere.
+    Return a DB path starting at the dataset root folder.
+    Lowercase every segment and replace spaces with underscores.
     """
     abs_path = os.path.abspath(path)
     parts = Path(abs_path).parts
 
-    # find the ALTA-MODA anchor (case-insensitive)
-    start = None
-    for i, p in enumerate(parts):
-        if _norm(p) == "alta-moda":
-            start = i
-            break
+    # find the dataset-root anchor (case-insensitive)
+    dataset_root = _find_dataset_root_part(parts)
+    start = parts.index(dataset_root) if dataset_root is not None else None
 
     if start is None:
         rel = os.path.relpath(abs_path, base)
         rel_parts = list(Path(rel).parts)
-        if len(rel_parts) <= 2:
-            return "/".join(_to_db_file(s) for s in rel_parts)
-        return "/".join(
-            [_to_db_file(rel_parts[0]), _to_db_file(rel_parts[1])]
-            + [_to_db_dir(s) for s in rel_parts[2:-1]]
-            + [_to_db_file(rel_parts[-1])]
-        )
-
-    rel_parts = list(parts[start:])  # starts with ALTA-MODA, then season, then folders..., then filename
-    if len(rel_parts) <= 2:
         return "/".join(_to_db_file(s) for s in rel_parts)
 
-    return "/".join(
-        [_to_db_file(rel_parts[0]), _to_db_file(rel_parts[1])]   # keep ALTA-MODA / FW1986-87
-        + [_to_db_dir(s) for s in rel_parts[2:-1]]               # lowercase folders after season
-        + [_to_db_file(rel_parts[-1])]                           # filename
-    )
+    rel_parts = list(parts[start:])  # starts with dataset root, then season, then folders..., then filename
+    return "/".join(_to_db_file(s) for s in rel_parts)
 
 
 def _image_id_from_path(path: str) -> str:
@@ -858,9 +925,10 @@ def expand_similar(
 
 def find_technical_description_dirs(season_dir: str) -> List[str]:
     out = []
+    allowed = {"technical descriptions", "tech descriptions"}
     for root, dirs, _files in os.walk(season_dir):
         for d in dirs:
-            if _norm(d) == "technical descriptions":
+            if _norm(d) in allowed:
                 out.append(os.path.join(root, d))
     return out
 
@@ -901,21 +969,17 @@ def record_to_image_map(
 ) -> Dict[str, Any]:
     """Convert outfit-centric record to image-centric mapping."""
     fields = outfit_record.get("fields", {})
-    exclude = {"author_of_file", "date_of_file"}  # your request
+    exclude = {"author_of_file", "date_of_file"}
 
-    compact = {
-        "outfit_id": outfit_record.get("outfit_id"),
-        "season": outfit_record.get("season"),  # keep existing (SS1987)
-    }
+    compact: Dict[str, Any] = {}
 
     for k, v in fields.items():
         if k in exclude:
             continue
         if k == "season":
-            # avoid overwriting season=SS1987; keep the field season as season_label
-            compact["season_label"] = v
+            compact["season"] = v
         else:
-            compact[k] = v   
+            compact[k] = v
 
     out: Dict[str, Any] = {}
 
@@ -924,12 +988,12 @@ def record_to_image_map(
         for m in payload.get("exact", []):
             rel = m.get("rel_path")
             if rel:
-                out[rel] = compact | {"section": section, "match_type": "exact"}
+                out[rel] = compact | {"match_type": "exact"}
         if include_near:
             for m in payload.get("near", []):
                 rel = m.get("rel_path")
                 if rel and rel not in out:
-                    out[rel] = compact | {"section": section, "match_type": "near"}
+                    out[rel] = compact | {"match_type": "near"}
 
     if include_expanded:
         expanded = outfit_record.get("expanded_similar", {})
@@ -937,9 +1001,87 @@ def record_to_image_map(
             for m in lst:
                 rel = m.get("rel_path")
                 if rel and rel not in out:
-                    out[rel] = compact | {"section": section, "match_type": "expanded", "seed": m.get("seed")}
+                    out[rel] = compact | {"match_type": "expanded", "seed": m.get("seed")}
 
     return out
+
+
+def flatten_outfit_record(outfit_record: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the grounded_outfit payload with selected top-level metadata."""
+    fields = dict(outfit_record.get("fields", {}))
+
+    return {
+        "author_of_file": fields.get("author_of_file"),
+        "date_of_file": fields.get("date_of_file"),
+        "technical_description_pdf": outfit_record.get("technical_description_pdf"),
+        "technical_images_pdf": outfit_record.get("technical_images_pdf"),
+        "fields": fields,
+        "linked_images": outfit_record.get("linked_images", {}),
+        "expanded_similar": outfit_record.get("expanded_similar", {}),
+        "raw_text": outfit_record.get("raw_text"),
+        "language": outfit_record.get("language"),
+    }
+
+
+def find_season_dirs(dataset_root_dir: str) -> List[str]:
+    """Return direct child folders of the dataset root sorted by name."""
+    base = Path(dataset_root_dir)
+    return sorted(str(p) for p in base.iterdir() if p.is_dir())
+
+
+def merge_image_map_files(image_map_paths: Iterable[Path]) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    for path in image_map_paths:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            merged.update(payload)
+    return merged
+
+
+def season_output_paths(
+    season_dir: str,
+    *,
+    outfits_dir: Path,
+    imgmap_dir: Path,
+    explicit_image_map_output: Optional[str] = None,
+) -> Tuple[Path, Path]:
+    season_slug = season_output_slug(season_dir)
+    out_path = outfits_dir / f"{season_slug}_all.json"
+    map_path = Path(explicit_image_map_output) if explicit_image_map_output else (imgmap_dir / f"{season_slug}_all.json")
+    return out_path, map_path
+
+
+def season_already_computed(
+    season_dir: str,
+    *,
+    outfits_dir: Path,
+    imgmap_dir: Path,
+    explicit_image_map_output: Optional[str] = None,
+) -> bool:
+    out_path, map_path = season_output_paths(
+        season_dir,
+        outfits_dir=outfits_dir,
+        imgmap_dir=imgmap_dir,
+        explicit_image_map_output=explicit_image_map_output,
+    )
+    if not (out_path.exists() and map_path.exists()):
+        return False
+
+    expected_root = f"{dataset_root_slug_from_path(season_dir)}/"
+    try:
+        payload = json.loads(map_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    if not isinstance(payload, dict):
+        return False
+
+    for key in payload.keys():
+        if isinstance(key, str) and key:
+            return key.startswith(expected_root)
+
+    return False
 
 
 def process_season(
@@ -965,8 +1107,9 @@ def process_season(
         raise FileNotFoundError(f"No 'Technical descriptions' directory found under {season_dir}")
 
     cache_path = None
+    cache_all = None
     if cache_hashes:
-        cache_path = os.path.join(season_dir, ".hash_cache_grounded.json")
+        cache_path, cache_all = season_cache_paths(season_dir, global_match=global_image_match)
 
     candidate_index = build_candidate_index(season_dir, cache_path=cache_path)
 
@@ -975,7 +1118,6 @@ def process_season(
 
     global_index = None
     if global_image_match:
-        cache_all = os.path.join(season_dir, ".hash_cache_grounded_all.json") if cache_hashes else None
         global_index = build_global_image_index(season_dir, cache_path=cache_all)
 
     for tech_dir in tech_dirs:
@@ -1062,9 +1204,20 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build grounded metadata from Technical descriptions PDFs")
 
     p.add_argument("--per-outfit", action="store_true", help="Write one JSON per outfit into the output folders")
-    p.add_argument("--season-dir", required=True, help="Path to a season folder, e.g. .../ALTA-MODA/SS1987")
-    p.add_argument("--output", required=True, help="Output JSON path for outfit-centric metadata")
-    p.add_argument("--output-image-mapping", default=None, help="Optional output JSON path for image-centric mapping")
+    p.add_argument(
+        "--season-dir",
+        default=None,
+        help="Path to one season folder, e.g. .../Dataset DataShack 2026/ALTA MODA 1987 SS",
+    )
+    p.add_argument(
+        "--dataset-root-dir",
+        dest="dataset_root_dir",
+        default=None,
+        help="Path to the dataset root containing all seasons, e.g. .../ferre-designs/Dataset DataShack 2026",
+    )
+    p.add_argument("--output", default=None, help="Output base dir or JSON path. Defaults to this script folder.")
+    p.add_argument("--output-image-mapping", default=None, help="Optional explicit output JSON path for the image-centric mapping")
+    p.add_argument("--merge-image-maps-output", default=None, help="Optional output JSON path for a single merged image map")
     p.add_argument("--global-image-match", action="store_true", help="Ignore section headings and match all embedded images against ALL season images")
 
     p.add_argument(
@@ -1085,80 +1238,136 @@ def parse_args() -> argparse.Namespace:
 
     return p.parse_args()
 
-def _base_output_dir(output_arg: str) -> Path:
+def _base_output_dir(output_arg: Optional[str]) -> Path:
+    if not output_arg:
+        return Path(__file__).resolve().parent
     p = Path(output_arg)
     # if user passes a .json file, use its parent as the base directory
     if p.suffix.lower() == ".json":
         return p.parent
     return p
 
+
+def _write_season_outputs(
+    records: List[Dict[str, Any]],
+    image_map: Dict[str, Any],
+    *,
+    season_dir: str,
+    outfits_dir: Path,
+    imgmap_dir: Path,
+    per_outfit: bool,
+    include_expanded: bool,
+    explicit_image_map_output: Optional[str] = None,
+) -> List[Path]:
+    season_slug = season_output_slug(season_dir)
+    written_image_map_paths: List[Path] = []
+
+    if per_outfit:
+        for rec in records:
+            oid = rec["outfit_id"]
+            out_path = outfits_dir / f"{season_slug}_{oid}.json"
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(flatten_outfit_record(rec), f, ensure_ascii=False, indent=2)
+
+            per_map = record_to_image_map(
+                rec,
+                os.path.abspath(season_dir),
+                include_near=True,
+                include_expanded=include_expanded,
+            )
+            map_path = imgmap_dir / f"{season_slug}_{oid}.json"
+            with open(map_path, "w", encoding="utf-8") as f:
+                json.dump(per_map, f, ensure_ascii=False, indent=2)
+            written_image_map_paths.append(map_path)
+
+        print(f"Wrote {len(records)} outfit files -> {outfits_dir}")
+        print(f"Wrote {len(records)} image-map files -> {imgmap_dir}")
+        return written_image_map_paths
+
+    tag = "all"
+    out_path = outfits_dir / f"{season_slug}_{tag}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump([flatten_outfit_record(rec) for rec in records], f, ensure_ascii=False, indent=2)
+
+    map_path = Path(explicit_image_map_output) if explicit_image_map_output else (imgmap_dir / f"{season_slug}_{tag}.json")
+    with open(map_path, "w", encoding="utf-8") as f:
+        json.dump(image_map, f, ensure_ascii=False, indent=2)
+    written_image_map_paths.append(map_path)
+
+    print(f"Wrote {len(records)} outfit records -> {out_path}")
+    print(f"Wrote {len(image_map)} image mappings -> {map_path}")
+    return written_image_map_paths
+
 def main() -> int:
     args = parse_args()
+
+    if bool(args.season_dir) == bool(args.dataset_root_dir):
+        raise SystemExit("Use exactly one of --season-dir or --dataset-root-dir")
 
     only = None
     if args.only_outfit_ids:
         only = [x.strip() for x in args.only_outfit_ids.split(",") if x.strip()]
 
-    records, image_map = process_season(
-        args.season_dir,
-        only_outfit_ids=only,
-        max_pairs=args.max_pairs,
-        exact_max_dist=args.exact_max_dist,
-        near_max_dist=args.near_max_dist,
-        expand_similar_images=bool(args.expand_similar),
-        expand_k=args.expand_k,
-        expand_max_dist=args.expand_max_dist,
-        cache_hashes=bool(args.cache_hashes),
-        global_image_match=bool(args.global_image_match),
-    )
-
     base_dir = _base_output_dir(args.output)
-    outfits_dir = base_dir / "grounded_outfits"
+    outfits_dir = base_dir / "grounded_outfit"
     imgmap_dir = base_dir / "grounded_image_map"
     outfits_dir.mkdir(parents=True, exist_ok=True)
     imgmap_dir.mkdir(parents=True, exist_ok=True)
 
-    season_name = os.path.basename(os.path.abspath(args.season_dir).rstrip("/\\"))
+    season_dirs = [args.season_dir] if args.season_dir else find_season_dirs(args.dataset_root_dir)
+    written_image_map_paths: List[Path] = []
 
-    if args.per_outfit:
-        # one file per outfit
-        for rec in records:
-            oid = rec["outfit_id"]
-            out_path = outfits_dir / f"{season_name}_{oid}.json"
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump([rec], f, ensure_ascii=False, indent=2)
-
-            # write per-outfit image map (only images for this outfit)
-            per_map = record_to_image_map(
-                rec,
-                os.path.abspath(args.season_dir),
-                include_near=True,
-                include_expanded=bool(args.expand_similar),
+    for season_dir in season_dirs:
+        explicit_map_output = args.output_image_mapping if len(season_dirs) == 1 else None
+        if not args.per_outfit and season_already_computed(
+            season_dir,
+            outfits_dir=outfits_dir,
+            imgmap_dir=imgmap_dir,
+            explicit_image_map_output=explicit_map_output,
+        ):
+            print(f"Skipping already computed season -> {season_dir}")
+            _out_path, existing_map_path = season_output_paths(
+                season_dir,
+                outfits_dir=outfits_dir,
+                imgmap_dir=imgmap_dir,
+                explicit_image_map_output=explicit_map_output,
             )
-            map_path = imgmap_dir / f"{season_name}_{oid}.json"
-            with open(map_path, "w", encoding="utf-8") as f:
-                json.dump(per_map, f, ensure_ascii=False, indent=2)
+            written_image_map_paths.append(existing_map_path)
+            continue
 
-        print(f"Wrote {len(records)} outfit files -> {outfits_dir}")
-        print(f"Wrote {len(records)} image-map files -> {imgmap_dir}")
+        records, image_map = process_season(
+            season_dir,
+            only_outfit_ids=only,
+            max_pairs=args.max_pairs,
+            exact_max_dist=args.exact_max_dist,
+            near_max_dist=args.near_max_dist,
+            expand_similar_images=bool(args.expand_similar),
+            expand_k=args.expand_k,
+            expand_max_dist=args.expand_max_dist,
+            cache_hashes=bool(args.cache_hashes),
+            global_image_match=bool(args.global_image_match),
+        )
 
-    else:
-        # single aggregated files
-        tag = "all"
-        if args.only_outfit_ids:
-            ids = [x.strip() for x in args.only_outfit_ids.split(",") if x.strip()]
-            tag = ids[0] if len(ids) == 1 else "subset"
+        written_image_map_paths.extend(
+            _write_season_outputs(
+                records,
+                image_map,
+                season_dir=season_dir,
+                outfits_dir=outfits_dir,
+                imgmap_dir=imgmap_dir,
+                per_outfit=bool(args.per_outfit),
+                include_expanded=bool(args.expand_similar),
+                explicit_image_map_output=explicit_map_output,
+            )
+        )
 
-        out_path = outfits_dir / f"{season_name}_{tag}.json"
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
-
-        map_path = imgmap_dir / f"{season_name}_{tag}.json"
-        with open(map_path, "w", encoding="utf-8") as f:
-            json.dump(image_map, f, ensure_ascii=False, indent=2)
-
-        print(f"Wrote {len(records)} outfit records -> {out_path}")
-        print(f"Wrote {len(image_map)} image mappings -> {map_path}")
+    if args.merge_image_maps_output:
+        merged_image_map = merge_image_map_files(written_image_map_paths)
+        merge_path = Path(args.merge_image_maps_output)
+        merge_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(merge_path, "w", encoding="utf-8") as f:
+            json.dump(merged_image_map, f, ensure_ascii=False, indent=2)
+        print(f"Wrote merged image map -> {merge_path}")
     
     return 0
 
@@ -1166,44 +1375,4 @@ def main() -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 
-
-
-# -------------------------
-# Usage examples
-# -------------------------
-#
-# This script extracts images embedded in each <id>_1.pdf and matches them to the images
-# stored in the season folder using perceptual hashes (dHash). With --cache-hashes it
-# precomputes image hashes for the season and reuses them across runs.
-#
-# 1) DEV: single outfit (fast iteration), section-based matching
-#   python -u metadata/build_grounded_outfit_metadata.py \
-#     --season-dir input-datasets/ferre-designs/ALTA-MODA/SS1987 \
-#     --only-outfit-ids 389 \
-#     --max-pairs 1 \
-#     --cache-hashes \
-#     --per-outfit \
-#     --output metadata
-#
-# 2) DEV: single outfit, GLOBAL matching (robust when headings/folder mapping fails)
-#    -> compares each embedded image in <id>_1.pdf against ALL images in that season
-#   python -u metadata/build_grounded_outfit_metadata.py \
-#     --season-dir input-datasets/ferre-designs/ALTA-MODA/SS1987 \
-#     --only-outfit-ids 389 \
-#     --max-pairs 1 \
-#     --cache-hashes \
-#     --global-image-match \
-#     --per-outfit \
-#     --output metadata
-#
-# 3) FULL SEASON: one JSON per outfit (recommended final setup)
-#   python -u metadata/build_grounded_outfit_metadata.py \
-#     --season-dir input-datasets/ferre-designs/ALTA-MODA/SS1987 \
-#     --cache-hashes \
-#     --global-image-match \
-#     --per-outfit \
-#     --output metadata
-#
-# Outputs:
-#   metadata/grounded_outfits/<SEASON>_<id>.json
-#   metadata/grounded_image_map/<SEASON>_<id>.json
+#docker compose run --rm --entrypoint /bin/bash llm-rag-cli -lc "cd /app && source /.venv/bin/activate && python metadata/images_metadata/grounded_metadata/build_grounded_outfit_metadata.py --dataset-root-dir 'input-datasets/ferre-designs/Dataset DataShack 2026' --cache-hashes --global-image-match --merge-image-maps-output 'metadata/images_metadata/grounded_metadata/grounded_image_map/all_collections_merged.json'"
