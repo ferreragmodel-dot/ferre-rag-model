@@ -48,8 +48,8 @@ from sklearn.metrics.pairwise import cosine_distances
 
 
 DEFAULT_INPUT = "embeddings_missing_from_grounded.json"
-DEFAULT_CLUSTER_OUTPUT = "missing_pdf_clusters_registry.jsonl"
-DEFAULT_MAP_OUTPUT = "missing_pdf_image_to_cluster_map.json"
+DEFAULT_CLUSTER_OUTPUT = "missing_pdf_clusters_registry_reclustered.jsonl"
+DEFAULT_MAP_OUTPUT = "missing_pdf_image_to_cluster_map_reclustered.json"
 
 
 def load_json_array(path: str) -> List[Dict[str, Any]]:
@@ -203,8 +203,8 @@ def compute_cluster_metrics(cluster_records: List[Dict[str, Any]]) -> Dict[str, 
     if cluster_size == 1:
         return {
             "cluster_size": 1,
-            "avg_similarity": 1.0,
-            "max_pairwise_distance": 0.0,
+            "avg_similarity": 1.0000,
+            "max_pairwise_distance": 0.0000,
         }
 
     emb_matrix = np.array([r["embedding"] for r in cluster_records], dtype=float)
@@ -225,7 +225,6 @@ def compute_cluster_metrics(cluster_records: List[Dict[str, Any]]) -> Dict[str, 
         "avg_similarity": round(avg_similarity, 4),
         "max_pairwise_distance": round(max_pairwise_distance, 4),
     }
-
 
 def assign_cluster_confidence(
     cluster_size: int,
