@@ -78,3 +78,5 @@ src/frontend-react/.next/
 src/api-service/.local-persistent
 
 /src/vector-db/metadata/images_metadata/fashion_ontology/public_fashion_onologies/
+*.jpg
+*.png

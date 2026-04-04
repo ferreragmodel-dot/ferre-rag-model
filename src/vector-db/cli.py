@@ -473,7 +473,7 @@ def generate_image_embeddings(image_paths, dimensionality: int = 256, batch_size
     print(f"\n✓ Generated {len(all_embeddings)} embeddings ({failed_count} failed)")
     return all_embeddings
 
-def embed_fashion_show_photos(images_folder="input-datasets/ferre-designs"):
+def embed_fashion_show_photos(images_folder="Dataset DataShack 2026"):
     """Generate embeddings for fashion show photos organized by season folders."""
     print(f"embed_fashion_show_photos() - Processing images from {images_folder}")
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -483,20 +483,21 @@ def embed_fashion_show_photos(images_folder="input-datasets/ferre-designs"):
     seasons_data = {}  # {season_key: [image_paths]}
 
     for root, dirs, files in os.walk(images_folder):
-        # Only process images inside a "fashion-show-photos" subfolder
+        # Only process images inside a "Fashion show photos" subfolder (case-insensitive)
         path_parts = os.path.relpath(root, images_folder).split(os.sep)
-        if "fashion-show-photos" not in path_parts:
+        if not any(part.lower() == "fashion show photos" for part in path_parts):
             continue
 
         for file in files:
             if any(file.lower().endswith(ext.replace('*', '')) for ext in image_extensions):
                 img_path = os.path.join(root, file)
 
-                # Extract season: look for FW.../SS... token in path
-                # Expected structure: ALTA-MODA/{season}/fashion-show-photos/image.jpg
+                # Extract season from parent folder name like "ALTA MODA 1986-87 FW"
+                # Look for the season folder (e.g., "ALTA MODA 1986-87 FW" or "ALTA MODA 1989 SS")
                 season_folder = "unknown"
-                for p in path_parts:
-                    if re.match(r'^(FW|SS)\d', p, re.IGNORECASE):
+                for i, p in enumerate(path_parts):
+                    # Match pattern like "ALTA MODA <year> <season>" or "ALTA MODA <years> <season>"
+                    if re.match(r'^ALTA MODA.*(\d{4}(?:-\d{2})?)\s+(FW|SS)', p, re.IGNORECASE):
                         season_folder = p
                         break
 

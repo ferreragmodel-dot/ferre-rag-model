@@ -46,15 +46,15 @@ Desktop/  (or wherever you cloned the repo)
 ├── secrets/                        # Outside the repo — never committed
 │   └── llm-service-account.json
 └── ferre-rag-model/
+    └──Dataset Datashack 2026/
+           └──ALTA MODA 1986-87 FW/Womenswear/Fashion show photos
+           └──ALTA MODA 1987 SS/Womenswear/Fashion show photos
+           └──ALTA MODA 1987-88 FW/Womenswear/Fashion show photos
+           └──ALTA MODA 1988 SS/Womenswear/Fashion show photos
+           └──ALTA MODA 1988-89 FW/Womenswear/Fashion show photos
+           └──ALTA MODA 1989 SS/Womenswear/Fashion show photos
     └── src/
     ├── vector-db/                  # Offline pipeline: chunk, embed, load
-    │   ├── input-datasets/
-    │   │   ├── ferre-notes-lessons/   # Place Ferré PDFs here
-    │   │   └── ferre-designs/         # Fashion show images organized by season
-    │   │       └── Dataset DataShack 2026/
-    │   │           ├── ALTA MODA 1986-87 FW/
-    │   │           ├── ALTA MODA 1987 SS/
-    │   │           └── ...
     │   ├── outputs/                   # Chunked and embedded data
     │   ├── metadata/                  # Archive metadata JSON files
     │   ├── cli.py
@@ -340,4 +340,4 @@ docker image ls
 - Asia Capezzuoli
 - Stefan Golic
 
-Note: the contents of `Dataset DataShack 2026` are exactly the same as the contents of the OneDrive folder shared by the Centro di Ricerca Ferr� for the purposes of this project.
+Note: the contents of `Dataset DataShack 2026` are exactly the same as the contents of the OneDrive folder shared by the Centro di Ricerca Ferr� for the purposes of this project.
