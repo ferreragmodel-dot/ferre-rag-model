@@ -1,5 +1,6 @@
 """
-Seed the database with fashion items from initial_database_loading.jsonl.
+Seed the database with fashion items from generated_image_metadata.jsonl.
+Only records with asset_type == "Fashion show photos" are loaded.
 Run from inside the container:
     python -m api.seeds.seed
 """
@@ -19,12 +20,17 @@ def seed():
 
     valid_fields = set(FashionItem.model_fields.keys())
 
-    with open(SEEDS_DIR / "initial_database_loading.jsonl", encoding="utf-8") as f:
+    with open(SEEDS_DIR / "generated_image_metadata.jsonl", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
 
     with Session(engine) as session:
         for raw in lines:
-            item_data = {k: v for k, v in json.loads(raw).items() if k in valid_fields}
+            record = json.loads(raw)
+
+            if record.get("asset_type") != "Fashion show photos":
+                continue
+
+            item_data = {k: v for k, v in record.items() if k in valid_fields}
 
             existing = session.exec(
                 select(FashionItem).where(FashionItem.source_path == item_data["source_path"])

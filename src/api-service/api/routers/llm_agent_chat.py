@@ -1,14 +1,14 @@
 import os
-import random
-from fastapi import APIRouter, Header, Query, Body, HTTPException, Request
-from fastapi.responses import FileResponse
-from typing import Dict, Any, List, Optional
 import uuid
 import time
-from datetime import datetime
 import mimetypes
 from pathlib import Path
+from typing import Dict, List, Optional
+
+from fastapi import APIRouter, Header, Request, HTTPException
+from fastapi.responses import FileResponse
 import chromadb
+
 from api.utils.agent_orchestrator import (
     chat_sessions,
     create_chat_session,
@@ -20,147 +20,37 @@ from api.utils.agent_orchestrator import (
 )
 from api.utils.chat_utils import ChatHistoryManager, ChatMessage
 
-
-# Image extensions
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"}
-
-# Define Router
 router = APIRouter()
 
-# Initialize chat history manager and sessions
 chat_manager = ChatHistoryManager(model="llm-agent")
 
-
-def _safe_parents(path: Path, n: int):
-    """Return path.parents[n] or None if out of range."""
-    return path.parents[n] if n < len(path.parents) else None
-
-
-def _find_designs_dir() -> Optional[Path]:
-    """Resolve the ferre-designs dataset directory."""
-    _base = Path(__file__).resolve()
-    candidates = [
-        c for c in [
-            Path("/input-datasets/ferre-designs"),
-            _safe_parents(_base, 4) and _safe_parents(_base, 4) / "input-datasets" / "ferre-designs",
-            _safe_parents(_base, 3) and _safe_parents(_base, 3) / "input-datasets" / "ferre-designs",
-            _safe_parents(_base, 1) and _safe_parents(_base, 1) / "input-datasets" / "ferre-designs",
-            Path.cwd() / "input-datasets" / "ferre-designs",
-        ] if c
-    ]
-    for candidate in candidates:
-        if candidate.exists() and candidate.is_dir():
-            return candidate
-    return None
+# Must match the prefix used in source_path (DB and ChromaDB metadata)
+DATASET_PREFIX = "Dataset DataShack 2026/"
 
 
 def _search_similar_images(query: str, request: Request, count: int = 3) -> List[Dict[str, str]]:
-    """Search for images similar to the query using ChromaDB multimodal embeddings."""
-    try:
-        # Connect to ChromaDB
-        chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
-        collection = chroma_client.get_collection(name="images-fashion-show-photos")
+    chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    collection = chroma_client.get_collection(name="images-fashion-show-photos")
+    query_embedding = generate_image_query_embedding(query)
+    results = collection.query(query_embeddings=[query_embedding], n_results=count)
 
-        # Generate multimodal embedding for the query (same space as image embeddings)
-        query_embedding = generate_image_query_embedding(query)
-
-        # Search for similar images
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=count
-        )
-
-        images = []
-        if results and results.get("metadatas") and len(results["metadatas"]) > 0:
-            for metadata in results["metadatas"][0]:
-                try:
-                    # Try to get path from metadata, fallback to filename
-                    image_path = metadata.get("path") or metadata.get("filename")
-                    if not image_path:
-                        continue
-
-                    # Extract relative path from the image path
-                    # The metadata stores either absolute paths or relative paths depending on how it was ingested
-                    if "ferre-designs/" in image_path:
-                        # Extract the part after "ferre-designs/"
-                        relative_path = image_path.split("ferre-designs/")[1]
-                    else:
-                        # Fallback: use last 3-4 segments (ALTA-MODA/SEASON/fashion-show-photos/filename)
-                        parts = image_path.split("/")
-                        # Find "ALTA-MODA" and take everything from there
-                        try:
-                            alta_idx = parts.index("ALTA-MODA")
-                            relative_path = "/".join(parts[alta_idx:])
-                        except ValueError:
-                            # If "ALTA-MODA" not found, just use the last 3 segments
-                            relative_path = "/".join(parts[-3:])
-
-                    image_url = str(request.base_url).rstrip("/") + f"/design-images/{relative_path}"
-                    images.append({
-                        "source_path": relative_path,
-                        "image_url": image_url,
-                    })
-                except Exception as e:
-                    print(f"Error processing image metadata: {e}")
-                    continue
-
-        return images
-    except Exception as e:
-        print(f"Error searching for similar images: {e}")
-        # Fallback to random images if search fails
-        return _get_sample_images(request, count)
-
-
-def _get_first_season_images() -> list[Path]:
-    """Return image paths from first season folder."""
-    designs_dir = _find_designs_dir()
-    if not designs_dir:
-        return []
-
-    season_dirs = sorted([path for path in designs_dir.glob("*/*") if path.is_dir()])
-    if not season_dirs:
-        return []
-
-    first_season_dir = season_dirs[0]
-    return sorted([
-        file_path
-        for file_path in first_season_dir.rglob("*")
-        if file_path.is_file() and file_path.suffix.lower() in IMAGE_EXTENSIONS
-    ])
-
-
-def _get_sample_images(request: Request, count: int = 3) -> List[Dict[str, str]]:
-    """Sample random images from first season and build URLs."""
-    designs_dir = _find_designs_dir()
-    if not designs_dir:
-        return []
-
-    image_files = _get_first_season_images()
-    if not image_files:
-        return []
-
-    selected = random.sample(image_files, k=min(count, len(image_files)))
     images = []
-    for image_path in selected:
-        try:
-            relative_path = image_path.relative_to(designs_dir).as_posix()
-            image_url = str(request.base_url).rstrip("/") + f"/design-images/{relative_path}"
-            images.append({
-                "source_path": relative_path,
-                "image_url": image_url,
-            })
-        except Exception:
-            continue
+    if results and results.get("metadatas") and results["metadatas"][0]:
+        for metadata in results["metadatas"][0]:
+            image_path = metadata.get("path")
+            if not image_path:
+                continue
+            relative = image_path.removeprefix(DATASET_PREFIX)
+            image_url = str(request.base_url).rstrip("/") + f"/design-images/{relative}"
+            images.append({"source_path": image_path, "image_url": image_url})
     return images
 
 
 @router.get("/chats")
 async def get_chats(
-    x_session_id: str = Header(None, alias="X-Session-ID"), limit: Optional[int] = None
+    x_session_id: str = Header(None, alias="X-Session-ID"),
+    limit: Optional[int] = None,
 ):
-    """Get all chats, optionally limited to a specific number"""
-    print("x_session_id:", x_session_id)
-    # Generate a default session ID if none provided
     if not x_session_id:
         x_session_id = "default-session"
     return chat_manager.get_recent_chats(x_session_id, limit)
@@ -168,11 +58,9 @@ async def get_chats(
 
 @router.get("/chats/{chat_id}")
 async def get_chat(
-    chat_id: str, x_session_id: str = Header(None, alias="X-Session-ID")
+    chat_id: str,
+    x_session_id: str = Header(None, alias="X-Session-ID"),
 ):
-    """Get a specific chat by ID"""
-    print("x_session_id:", x_session_id)
-    # Generate a default session ID if none provided
     if not x_session_id:
         x_session_id = "default-session"
     chat = chat_manager.get_chat(chat_id, x_session_id)
@@ -184,38 +72,25 @@ async def get_chat(
 @router.post("/chats")
 async def start_chat_with_llm(
     request: Request,
-    message: ChatMessage, x_session_id: str = Header(None, alias="X-Session-ID")
+    message: ChatMessage,
+    x_session_id: str = Header(None, alias="X-Session-ID"),
 ):
-    message_dict = message.model_dump()
-    print("content:", message_dict["content"])
-    print("x_session_id:", x_session_id)
-
-    # Generate a default session ID if none provided
     if not x_session_id:
         x_session_id = "default-session"
 
-    """Start a new chat with an initial message"""
+    message_dict = message.model_dump()
     chat_id = str(uuid.uuid4())
     current_time = int(time.time())
 
-    # Create a new agent chat session
     chat_session = create_chat_session()
     chat_sessions[chat_id] = chat_session
 
-    # Add ID and role to the user message
     message_dict["message_id"] = str(uuid.uuid4())
     message_dict["role"] = "user"
 
-    # Generate response
     assistant_response_text, response_sources = generate_chat_response(chat_session, message_dict)
 
-    # Create chat response
-    title = message_dict.get("content")
-    if not title:
-        title = "Image chat"
-    title = title[:50] + "..."
-
-    # Get relevant images based on query
+    title = (message_dict.get("content") or "Image chat")[:50] + "..."
     images = _search_similar_images(message_dict.get("content", ""), request, count=3)
 
     chat_response = {
@@ -234,7 +109,6 @@ async def start_chat_with_llm(
         "sources": response_sources,
     }
 
-    # Save chat
     chat_manager.save_chat(chat_response, x_session_id)
     return chat_response
 
@@ -246,91 +120,47 @@ async def continue_chat_with_llm(
     message: ChatMessage,
     x_session_id: str = Header(None, alias="X-Session-ID"),
 ):
-    message_dict = message.model_dump()
-    print("content:", message_dict["content"])
-    print("x_session_id:", x_session_id)
-
-    # Generate a default session ID if none provided
     if not x_session_id:
         x_session_id = "default-session"
 
-    """Add a message to an existing chat"""
+    message_dict = message.model_dump()
     chat = chat_manager.get_chat(chat_id, x_session_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    # Get or rebuild agent chat session
     chat_session = chat_sessions.get(chat_id)
     if not chat_session:
         chat_session = rebuild_chat_session(chat["messages"], history_dir=chat_manager.history_dir)
         chat_sessions[chat_id] = chat_session
 
-    # Update timestamp
-    current_time = int(time.time())
-    chat["dts"] = current_time
-
-    # Add message ID and role
     message_dict["message_id"] = str(uuid.uuid4())
     message_dict["role"] = "user"
 
-    # Generate response
     assistant_response_text, response_sources = generate_chat_response(chat_session, message_dict)
 
-    # Add messages
+    chat["dts"] = int(time.time())
     chat["messages"].append(message_dict)
-    chat["messages"].append(
-        {
-            "message_id": str(uuid.uuid4()),
-            "role": "assistant",
-            "content": assistant_response_text,
-        }
-    )
-
-    # Get relevant images (refresh on each query)
-    images = _search_similar_images(message_dict.get("content", ""), request, count=3)
-    chat["images"] = images
+    chat["messages"].append({
+        "message_id": str(uuid.uuid4()),
+        "role": "assistant",
+        "content": assistant_response_text,
+    })
+    chat["images"] = _search_similar_images(message_dict.get("content", ""), request, count=3)
     chat["sources"] = response_sources
 
-    # Save updated chat
     chat_manager.save_chat(chat, x_session_id)
     return chat
 
 
 @router.get("/images/{chat_id}/{message_id}.png")
 async def get_chat_image(chat_id: str, message_id: str):
-    """
-    Serve an image from the chat history.
+    image_path = Path(os.path.join(chat_manager.images_dir, chat_id, f"{message_id}.png")).resolve()
+    images_dir = Path(chat_manager.images_dir).resolve()
 
-    Args:
-        chat_id: The chat ID
-        message_id: The message ID
+    if not str(image_path).startswith(str(images_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
 
-    Returns:
-        FileResponse: The image file with appropriate content type
-    """
-    try:
-        # Construct the image path
-        image_path = os.path.join(chat_manager.images_dir, chat_id, f"{message_id}.png")
-
-        # Verify the path exists and is within the images directory
-        image_path = Path(image_path).resolve()
-        images_dir = Path(chat_manager.images_dir).resolve()
-
-        # Security check: ensure the requested file is within the images directory
-        if not str(image_path).startswith(str(images_dir)):
-            raise HTTPException(status_code=403, detail="Access denied")
-
-        if not image_path.exists():
-            raise HTTPException(status_code=404, detail="Image not found")
-
-        # Determine content type
-        content_type, _ = mimetypes.guess_type(str(image_path))
-        if not content_type:
-            content_type = "application/octet-stream"
-
-        return FileResponse(path=image_path, media_type=content_type)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error serving image: {str(e)}")
+    content_type, _ = mimetypes.guess_type(str(image_path))
+    return FileResponse(path=image_path, media_type=content_type or "application/octet-stream")

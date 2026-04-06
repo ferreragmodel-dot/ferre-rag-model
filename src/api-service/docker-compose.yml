@@ -12,8 +12,7 @@ services:
             - .:/app
             - ../../../secrets:/secrets
             - ../../../persistent-folder:/persistent
-            - ../../images:/images
-            - ../../input-datasets:/input-datasets
+            - ../../Dataset Datashack 2026:/design-images
         ports:
             - 9000:9000
         environment:

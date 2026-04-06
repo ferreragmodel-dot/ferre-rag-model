@@ -7,8 +7,8 @@ class FashionItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     source_path: str
     collection_line: str
-    season_years: str
-    year_path: str
+    season_path: Optional[str] = None
+    year_path: Optional[str] = None
     asset_type: str
     season: Optional[str] = None
     label: Optional[str] = None
@@ -30,7 +30,7 @@ class FashionItem(SQLModel, table=True):
     condition: Optional[str] = None
     collection: Optional[str] = None
     year: Optional[str] = None
-    item_tags: List[str] = Field(default=[], sa_column=Column(JSON))
+    garments_tags: List[str] = Field(default=[], sa_column=Column(JSON))
     colors_tags: List[str] = Field(default=[], sa_column=Column(JSON))
     material_tags: List[str] = Field(default=[], sa_column=Column(JSON))
     patterns_tags: List[str] = Field(default=[], sa_column=Column(JSON))
@@ -42,4 +42,6 @@ class FashionItem(SQLModel, table=True):
     embellishment_tags: List[str] = Field(default=[], sa_column=Column(JSON))
     style_tags: List[str] = Field(default=[], sa_column=Column(JSON))
     llm_description: Optional[str] = None
-    pdf_available: bool = False
+    pdf_available: str
+    cluster_id: str
+    outfit_id: str

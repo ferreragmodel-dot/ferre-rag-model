@@ -19,7 +19,6 @@ interface ConversationPopupProps {
   onClose: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 
 // Parse citation markers and make them interactive
 function renderWithCitations(
@@ -31,7 +30,7 @@ function renderWithCitations(
   // Updated regex to match [1], [1, 2], [1,2], etc.
   const regex = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
   let lastIndex = 0;
-  let match;
+  let match: RegExpExecArray | null;
 
   while ((match = regex.exec(text)) !== null) {
     // Add text before citation
@@ -48,7 +47,7 @@ function renderWithCitations(
     // Create buttons for each citation number
     const citationButtons = citationNumbers.map((num, idx) => (
       <button
-        key={`citation-${match.index}-${idx}`}
+        key={`citation-${match!.index}-${idx}`}
         onClick={() => onCitationClick(num)}
         className={`inline font-semibold text-xs cursor-pointer transition-colors mx-0.5 ${
           activeCitation === num
@@ -223,7 +222,7 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                     {msg.role === "assistant" && (
                       <div className="relative mt-0.5 h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-muted">
                         <Image
-                          src={`${API_BASE_URL}/images/ferre.png`}
+                          src="/ferre.png"
                           alt="Archive"
                           fill
                           className="object-cover"
@@ -360,7 +359,7 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                   <div className="mb-6 flex items-center gap-3">
                     <div className="relative mt-0.5 h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-muted">
                       <Image
-                        src={`${API_BASE_URL}/images/ferre.png`}
+                        src="/ferre.png"
                         alt="Archive"
                         fill
                         className="object-cover"
