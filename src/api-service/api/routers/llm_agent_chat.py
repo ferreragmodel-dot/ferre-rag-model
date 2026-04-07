@@ -37,7 +37,7 @@ def _search_similar_images(query: str, request: Request, count: int = 3) -> List
     images = []
     if results and results.get("metadatas") and results["metadatas"][0]:
         for metadata in results["metadatas"][0]:
-            image_path = metadata.get("path")
+            image_path = metadata.get("source_path")
             if not image_path:
                 continue
             relative = image_path.removeprefix(DATASET_PREFIX)

@@ -7,8 +7,8 @@ class FashionItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     source_path: str
     collection_line: str
-    season_path: Optional[str] = None
-    year_path: Optional[str] = None
+    season_path: str
+    year_path: str
     asset_type: str
     season: Optional[str] = None
     label: Optional[str] = None

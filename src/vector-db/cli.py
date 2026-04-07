@@ -591,15 +591,66 @@ def load(method="recursive-split"):
 
 
 def load_fashion_show_photos():
-    """Load fashion show photo embeddings into ChromaDB as a single collection."""
+    """Load fashion show photo embeddings into ChromaDB as a single collection.
+
+    Each record is enriched with metadata from generated_image_metadata_fixed_paths.jsonl,
+    joined on embedding['path'] == metadata['source_path'].
+    """
     print("load_fashion_show_photos()")
 
     COLLECTION_NAME = "images-fashion-show-photos"
+    METADATA_FILE = os.path.join(
+        "metadata", "images_metadata", "metadata_generation_final",
+        "generated_image_metadata_fixed_paths.jsonl"
+    )
+
+    # Load rich metadata keyed by NFC-normalized source_path for O(1) lookup.
+    # Normalization avoids mismatches when the same character (e.g. é) is encoded
+    # as a single codepoint (NFC) in one file and as base+combining accent (NFD) in another.
+    import unicodedata
+    metadata_by_path = {}
+    if os.path.exists(METADATA_FILE):
+        with open(METADATA_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    record = json.loads(line)
+                    key = unicodedata.normalize("NFC", record["source_path"])
+                    metadata_by_path[key] = record
+        print(f"✓ Loaded {len(metadata_by_path)} metadata records from {METADATA_FILE}")
+    else:
+        print(f"⚠ Metadata file not found: {METADATA_FILE}. Loading with basic metadata only.")
+
+    # Tag fields stored as comma-separated strings (ChromaDB does not support lists)
+    TAG_FIELDS = [
+        "garments_tags", "colors_tags", "material_tags", "patterns_tags",
+        "silhouette_tags", "length_tags", "neckline_tags", "sleeve_tags",
+        "closure_tags", "embellishment_tags", "style_tags",
+    ]
+    SCALAR_FIELDS = [
+        "season_path", "year_path", "collection_line", "asset_type", "cluster_id", "outfit_id",
+        "llm_description", "pdf_available", "season", "label", "acquisition",
+        "look", "file", "inventory", "object", "source", "description",
+        "exhibitions", "size", "materials", "present_location", "remark",
+        "bibliography", "designer", "working_process", "condition", "collection", "year",
+    ]
+
+    def build_metadata(row, path: str) -> dict:
+        """Build metadata from the rich metadata record, keyed by source_path."""
+        meta = {"source_path": path}
+        rich = metadata_by_path.get(path)
+        if rich:
+            for field in SCALAR_FIELDS:
+                meta[field] = str(rich.get(field) or "")
+            for field in TAG_FIELDS:
+                tags = rich.get(field) or []
+                meta[field] = ", ".join(tags) if isinstance(tags, list) else str(tags)
+        return meta
 
     # Clear Cache
     chromadb.api.client.SharedSystemClient.clear_system_cache()
 
-    # Connect to chroma DB with retry logic
+    # Connect to ChromaDB with retry logic
     max_retries = 10
     retry_delay = 1
     client = None
@@ -620,28 +671,24 @@ def load_fashion_show_photos():
     if client is None:
         raise RuntimeError("Failed to connect to ChromaDB")
 
-    # Find all fashion-show-photos embedding files (one per season)
     embedding_files = glob.glob(os.path.join(OUTPUT_FOLDER, "embeddings-images-*-fashion-show-photos.jsonl"))
-
     if not embedding_files:
         print(f"⚠ No fashion show photo embeddings found in {OUTPUT_FOLDER}. Run --embed-fashion-show-photos first.")
         return
 
     print(f"Found {len(embedding_files)} season file(s) to load into '{COLLECTION_NAME}'")
 
-    # Delete existing collection and recreate
     try:
         client.delete_collection(name=COLLECTION_NAME)
         print(f"Deleted existing collection '{COLLECTION_NAME}'")
     except Exception:
         pass
 
-    collection = client.create_collection(
-        name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+    collection = client.create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
     print(f"Created collection '{COLLECTION_NAME}'")
 
-    # Load all seasons into the single collection
     total_loaded = 0
+    unmatched = 0
     for jsonl_file in sorted(embedding_files):
         season = (
             os.path.basename(jsonl_file)
@@ -650,7 +697,6 @@ def load_fashion_show_photos():
         )
         print(f"\n→ Loading season: {season} from {jsonl_file}")
         data_df = pd.read_json(jsonl_file, lines=True)
-        print(f"  Shape: {data_df.shape}")
 
         if "id" not in data_df.columns:
             data_df["id"] = data_df["filename"].astype(str)
@@ -660,15 +706,21 @@ def load_fashion_show_photos():
             batch = data_df.iloc[i:i+batch_size].copy().reset_index(drop=True)
             ids = batch["id"].tolist()
             embeddings = batch["embedding"].tolist()
-            metadatas = [
-                {k: str(row[k]) for k in ("filename", "path", "season") if k in row}
-                for _, row in batch.iterrows()
-            ]
+            metadatas = []
+            for _, row in batch.iterrows():
+                path = unicodedata.normalize("NFC", str(row.get("path", "")))
+                if path and path not in metadata_by_path:
+                    unmatched += 1
+                metadatas.append(build_metadata(row, path))
             documents = batch["filename"].astype(str).tolist() if "filename" in batch.columns else ids
             collection.add(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
 
         total_loaded += len(data_df)
         print(f"  ✓ Loaded {len(data_df)} images")
+
+    print(f"\n✓ Total loaded: {total_loaded} images")
+    if unmatched:
+        print(f"⚠ {unmatched} embeddings had no matching metadata record (stored with basic metadata only)")
 
     print(f"\n✓ Fashion show photos loading complete. Total: {total_loaded} images across {len(embedding_files)} seasons into '{COLLECTION_NAME}'")
 

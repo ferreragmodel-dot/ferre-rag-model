@@ -20,7 +20,7 @@ def seed():
 
     valid_fields = set(FashionItem.model_fields.keys())
 
-    with open(SEEDS_DIR / "generated_image_metadata.jsonl", encoding="utf-8") as f:
+    with open(SEEDS_DIR / "generated_image_metadata_fixed_paths.jsonl", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
 
     with Session(engine) as session:
