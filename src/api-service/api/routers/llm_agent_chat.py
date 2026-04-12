@@ -3,18 +3,23 @@ import uuid
 import time
 import mimetypes
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header, Request, HTTPException
+from fastapi import APIRouter, Depends, Header, Request, HTTPException
 from fastapi.responses import FileResponse
 import chromadb
+from sqlmodel import Session, select
 
+from api.db import get_session
+from api.models.fashion_item import FashionItem
 from api.utils.agent_orchestrator import (
     chat_sessions,
     create_chat_session,
     generate_chat_response,
     rebuild_chat_session,
     generate_image_query_embedding,
+    retrieve_text_chunks,
+    generate_final_answer,
     CHROMADB_HOST,
     CHROMADB_PORT,
 )
@@ -26,6 +31,9 @@ chat_manager = ChatHistoryManager(model="llm-agent")
 
 # Must match the prefix used in source_path (DB and ChromaDB metadata)
 DATASET_PREFIX = "Dataset DataShack 2026/"
+
+# Fetch more image candidates than the final count to enable metadata-based re-ranking
+IMAGE_CANDIDATES_COUNT = 10
 
 
 def _search_similar_images(query: str, request: Request, count: int = 3) -> List[Dict[str, str]]:
@@ -44,6 +52,61 @@ def _search_similar_images(query: str, request: Request, count: int = 3) -> List
             image_url = str(request.base_url).rstrip("/") + f"/design-images/{relative}"
             images.append({"source_path": image_path, "image_url": image_url})
     return images
+
+
+def _fetch_images_metadata(source_paths: List[str], db: Session) -> Dict[str, Any]:
+    """Fetch FashionItem records from Postgres for the given source paths."""
+    if not source_paths:
+        return {}
+    items = db.exec(
+        select(FashionItem).where(FashionItem.source_path.in_(source_paths))
+    ).all()
+    return {item.source_path: item for item in items}
+
+
+def _score_image(item: Any, text_context: str) -> int:
+    """Score an image by how many of its tags and description match the text context."""
+    text_lower = text_context.lower()
+    score = 0
+    for tag_list in [
+        item.garments_tags,
+        item.colors_tags,
+        item.material_tags,
+        item.patterns_tags,
+        item.style_tags,
+        item.silhouette_tags,
+        item.embellishment_tags,
+    ]:
+        for tag in (tag_list or []):
+            if tag.lower() in text_lower:
+                score += 1
+    if item.year_path and item.year_path in text_context:
+        score += 2
+    if item.llm_description:
+        desc_words = set(item.llm_description.lower().split())
+        context_words = set(text_lower.split())
+        score += len(desc_words & context_words) // 5
+    return score
+
+
+def _build_image_context(ranked_items: List[Any]) -> str:
+    """Format image metadata as a context string to inject into the final LLM call."""
+    if not ranked_items:
+        return ""
+    lines = [
+        "The following archive images are shown to the user alongside your response. "
+        "Reference them naturally in your answer when they support your points:\n"
+    ]
+    for i, item in enumerate(ranked_items, 1):
+        tags: List[str] = []
+        for tag_list in [item.garments_tags, item.colors_tags, item.material_tags]:
+            tags.extend(tag_list or [])
+        desc = item.llm_description or "(no description available)"
+        lines.append(f"Image {i} \u2014 {item.season_path} ({item.year_path}), {item.collection_line}")
+        if tags:
+            lines.append(f"  Tags: {', '.join(tags[:10])}")
+        lines.append(f"  Description: {desc}")
+    return "\n".join(lines)
 
 
 @router.get("/chats")
@@ -74,6 +137,7 @@ async def start_chat_with_llm(
     request: Request,
     message: ChatMessage,
     x_session_id: str = Header(None, alias="X-Session-ID"),
+    db: Session = Depends(get_session),
 ):
     if not x_session_id:
         x_session_id = "default-session"
@@ -88,11 +152,44 @@ async def start_chat_with_llm(
     message_dict["message_id"] = str(uuid.uuid4())
     message_dict["role"] = "user"
 
-    assistant_response_text, response_sources = generate_chat_response(chat_session, message_dict)
+    # Step 1+2: Tool selection + ChromaDB text chunk retrieval
+    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
+        chat_session, message_dict
+    )
+
+    # Step 3: Image similarity search — fetch more candidates for re-ranking
+    image_candidates = _search_similar_images(
+        message_dict.get("content", ""), request, count=IMAGE_CANDIDATES_COUNT
+    )
+
+    # Step 4: Fetch Postgres metadata for all image candidates
+    candidate_paths = [img["source_path"] for img in image_candidates]
+    metadata_map = _fetch_images_metadata(candidate_paths, db)
+
+    # Step 5: Re-rank images by tag/description overlap with retrieved text context
+    text_context = (
+        message_dict.get("content", "") + " "
+        + " ".join(s.get("excerpt", "") for s in sources)
+    )
+    ranked_items = sorted(
+        metadata_map.values(),
+        key=lambda item: _score_image(item, text_context),
+        reverse=True,
+    )[:3]
+
+    ranked_paths = {item.source_path for item in ranked_items}
+    top_images = [img for img in image_candidates if img["source_path"] in ranked_paths]
+    if not top_images:
+        top_images = image_candidates[:3]
+
+    # Step 6: Generate final answer with text chunks + image metadata context
+    image_context = _build_image_context(ranked_items) if ranked_items else None
+    assistant_response_text, response_sources = generate_final_answer(
+        chat_session, user_content, tool_call_content, function_responses_content,
+        sources, image_context
+    )
 
     title = (message_dict.get("content") or "Image chat")[:50] + "..."
-    images = _search_similar_images(message_dict.get("content", ""), request, count=3)
-
     chat_response = {
         "chat_id": chat_id,
         "title": title,
@@ -105,7 +202,7 @@ async def start_chat_with_llm(
                 "content": assistant_response_text,
             },
         ],
-        "images": images,
+        "images": top_images,
         "sources": response_sources,
     }
 
@@ -119,6 +216,7 @@ async def continue_chat_with_llm(
     chat_id: str,
     message: ChatMessage,
     x_session_id: str = Header(None, alias="X-Session-ID"),
+    db: Session = Depends(get_session),
 ):
     if not x_session_id:
         x_session_id = "default-session"
@@ -136,7 +234,42 @@ async def continue_chat_with_llm(
     message_dict["message_id"] = str(uuid.uuid4())
     message_dict["role"] = "user"
 
-    assistant_response_text, response_sources = generate_chat_response(chat_session, message_dict)
+    # Step 1+2: Tool selection + ChromaDB text chunk retrieval
+    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
+        chat_session, message_dict
+    )
+
+    # Step 3: Image similarity search — fetch more candidates for re-ranking
+    image_candidates = _search_similar_images(
+        message_dict.get("content", ""), request, count=IMAGE_CANDIDATES_COUNT
+    )
+
+    # Step 4: Fetch Postgres metadata for all image candidates
+    candidate_paths = [img["source_path"] for img in image_candidates]
+    metadata_map = _fetch_images_metadata(candidate_paths, db)
+
+    # Step 5: Re-rank images by tag/description overlap with retrieved text context
+    text_context = (
+        message_dict.get("content", "") + " "
+        + " ".join(s.get("excerpt", "") for s in sources)
+    )
+    ranked_items = sorted(
+        metadata_map.values(),
+        key=lambda item: _score_image(item, text_context),
+        reverse=True,
+    )[:3]
+
+    ranked_paths = {item.source_path for item in ranked_items}
+    top_images = [img for img in image_candidates if img["source_path"] in ranked_paths]
+    if not top_images:
+        top_images = image_candidates[:3]
+
+    # Step 6: Generate final answer with text chunks + image metadata context
+    image_context = _build_image_context(ranked_items) if ranked_items else None
+    assistant_response_text, response_sources = generate_final_answer(
+        chat_session, user_content, tool_call_content, function_responses_content,
+        sources, image_context
+    )
 
     chat["dts"] = int(time.time())
     chat["messages"].append(message_dict)
@@ -145,7 +278,7 @@ async def continue_chat_with_llm(
         "role": "assistant",
         "content": assistant_response_text,
     })
-    chat["images"] = _search_similar_images(message_dict.get("content", ""), request, count=3)
+    chat["images"] = top_images
     chat["sources"] = response_sources
 
     chat_manager.save_chat(chat, x_session_id)

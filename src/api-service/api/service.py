@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -21,13 +22,37 @@ app = FastAPI(title="API Server", description="API Server", version="v1")
 DATASET_PREFIX = "Dataset DataShack 2026/"
 
 
+def _resolve_design_images_dir() -> str:
+    env_path = os.environ.get("DESIGN_IMAGES_DIR")
+    if env_path and Path(env_path).exists():
+        return env_path
+
+    docker_path = Path("/design-images")
+    if docker_path.exists():
+        return str(docker_path)
+
+    # Local dev fallback: repo root contains "Dataset DataShack 2026"
+    local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
+    if local_repo_dataset.exists():
+        return str(local_repo_dataset)
+
+    # Keep startup informative if neither Docker mount nor local dataset is present.
+    raise RuntimeError(
+        "Design images directory not found. Set DESIGN_IMAGES_DIR or mount /design-images."
+    )
+
+
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
     seed()
 
 
-app.mount("/design-images", StaticFiles(directory="/design-images"), name="design-images")
+app.mount(
+    "/design-images",
+    StaticFiles(directory=_resolve_design_images_dir()),
+    name="design-images",
+)
 
 app.add_middleware(
     CORSMiddleware,

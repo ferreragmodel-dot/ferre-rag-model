@@ -118,81 +118,69 @@ def generate_image_query_embedding(query: str) -> List[float]:
         raise
 
 
-def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
+def _build_user_content(message: Dict) -> Content:
+    """Build a Content object from a message dict (text and/or image)."""
+    user_parts = []
+
+    if message.get("image"):
+        base64_string = message["image"]
+        if "," in base64_string:
+            header, base64_data = base64_string.split(",", 1)
+            mime_type = header.split(":")[1].split(";")[0]
+        else:
+            base64_data = base64_string
+            mime_type = "image/jpeg"
+        image_bytes = base64.b64decode(base64_data)
+        user_parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
+        user_parts.append(
+            Part.from_text(
+                text=message.get("content")
+                or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
+            )
+        )
+    elif message.get("image_path"):
+        image_path = os.path.join("chat-history", "llm-agent", message["image_path"])
+        with Path(image_path).open("rb") as f:
+            image_bytes = f.read()
+        mime_type = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".gif": "image/gif",
+        }.get(Path(image_path).suffix.lower(), "image/jpeg")
+        user_parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
+        user_parts.append(
+            Part.from_text(
+                text=message.get("content")
+                or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
+            )
+        )
+    else:
+        if message.get("content"):
+            user_parts.append(Part.from_text(text=message["content"]))
+
+    if not user_parts:
+        raise ValueError("Message must contain either text content or image")
+
+    return Content(role="user", parts=user_parts)
+
+
+def retrieve_text_chunks(session: AgentChatSession, message: Dict) -> tuple:
     """
-    Generate a response using the 3-step agentic RAG pipeline.
+    Steps 1 & 2 of the agentic pipeline: tool selection + ChromaDB retrieval.
 
-    Step 1 - Tool selection: LLM decides which archive search tool to call.
-    Step 2 - Execution: run the selected tool(s) against ChromaDB.
-    Step 3 - Answer generation: LLM generates a grounded final answer.
-
-    Args:
-        session: AgentChatSession holding the conversation history.
-        message: Dict with 'content' (text) and optionally 'image' (base64).
+    Does NOT modify session.history — call generate_final_answer() next.
 
     Returns:
-        tuple: (response_text, sources_list)
+        tuple: (user_content, tool_call_content, function_responses_content, sources)
+        tool_call_content and function_responses_content are None when ChromaDB is
+        unavailable or no tool was selected.
     """
     try:
+        user_content = _build_user_content(message)
 
-        # Build user content parts (text + optional image)
-        user_parts = []
-
-        if message.get("image"):
-            base64_string = message["image"]
-            if "," in base64_string:
-                header, base64_data = base64_string.split(",", 1)
-                mime_type = header.split(":")[1].split(";")[0]
-            else:
-                base64_data = base64_string
-                mime_type = "image/jpeg"
-            image_bytes = base64.b64decode(base64_data)
-            user_parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
-            user_parts.append(
-                Part.from_text(
-                    text=message.get("content")
-                    or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
-                )
-            )
-        elif message.get("image_path"):
-            image_path = os.path.join("chat-history", "llm-agent", message["image_path"])
-            with Path(image_path).open("rb") as f:
-                image_bytes = f.read()
-            mime_type = {
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".png": "image/png",
-                ".gif": "image/gif",
-            }.get(Path(image_path).suffix.lower(), "image/jpeg")
-            user_parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
-            user_parts.append(
-                Part.from_text(
-                    text=message.get("content")
-                    or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
-                )
-            )
-        else:
-            if message.get("content"):
-                user_parts.append(Part.from_text(text=message["content"]))
-
-        if not user_parts:
-            raise ValueError("Message must contain either text content or image")
-
-        user_content = Content(role="user", parts=user_parts)
-
-        # If ChromaDB is unavailable, skip tool-based retrieval and do direct generation.
         if chroma_client is None:
-            final_response = llm_client.models.generate_content(
-                model=GENERATIVE_MODEL,
-                contents=session.history + [user_content],
-                config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION),
-            )
-            final_text = final_response.text
-            session.history.append(user_content)
-            session.history.append(
-                Content(role="model", parts=[Part.from_text(text=final_text)])
-            )
-            return final_text, []
+            return user_content, None, None, []
 
         collection = chroma_client.get_collection(name=COLLECTION_NAME)
 
@@ -217,18 +205,7 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
         print("Function calls:", function_calls)
 
         if not function_calls:
-            # Fallback: no tool selected, answer directly
-            final_response = llm_client.models.generate_content(
-                model=GENERATIVE_MODEL,
-                contents=session.history + [user_content],
-                config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION),
-            )
-            final_text = final_response.text
-            session.history.append(user_content)
-            session.history.append(
-                Content(role="model", parts=[Part.from_text(text=final_text)])
-            )
-            return final_text, []
+            return user_content, None, None, []
 
         tool_call_content = tool_selection_response.candidates[0].content
 
@@ -237,25 +214,63 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
             function_calls, collection, embed_func=generate_query_embedding
         )
 
-        # Step 3: LLM generates final grounded answer
+        return user_content, tool_call_content, Content(parts=function_responses), sources
+
+    except Exception as e:
+        print(f"Error retrieving text chunks: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve text chunks: {str(e)}",
+        )
+
+
+def generate_final_answer(
+    session: AgentChatSession,
+    user_content: Content,
+    tool_call_content: Optional[Content],
+    function_responses_content: Optional[Content],
+    sources: List,
+    image_context: Optional[str] = None,
+) -> tuple:
+    """
+    Step 3: Generate the grounded final answer.
+
+    Optionally injects image metadata context so the LLM can reference the
+    images being shown to the user alongside the response.
+    Updates session.history.
+
+    Returns:
+        tuple: (response_text, sources)
+    """
+    try:
+        system = SYSTEM_INSTRUCTION
+        if image_context:
+            system = system + "\n\n" + image_context
+
+        contents = list(session.history) + [user_content]
+
+        if tool_call_content is not None:
+            contents.extend([tool_call_content, function_responses_content])
+            config = types.GenerateContentConfig(
+                system_instruction=system,
+                tools=[ferre_archive_tool],
+            )
+        else:
+            config = types.GenerateContentConfig(system_instruction=system)
+
         final_response = llm_client.models.generate_content(
             model=GENERATIVE_MODEL,
-            contents=session.history + [
-                user_content,
-                tool_call_content,
-                Content(parts=function_responses),
-            ],
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                tools=[ferre_archive_tool],
-            ),
+            contents=contents,
+            config=config,
         )
         final_text = final_response.text
 
         # Append the full exchange to history
         session.history.append(user_content)
-        session.history.append(tool_call_content)
-        session.history.append(Content(parts=function_responses))
+        if tool_call_content is not None:
+            session.history.append(tool_call_content)
+            session.history.append(function_responses_content)
         session.history.append(
             Content(role="model", parts=[Part.from_text(text=final_text)])
         )
@@ -263,12 +278,28 @@ def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
         return final_text, sources
 
     except Exception as e:
-        print(f"Error generating agent response: {str(e)}")
+        print(f"Error generating final answer: {str(e)}")
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate response: {str(e)}",
         )
+
+
+def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
+    """
+    Convenience wrapper: retrieve_text_chunks → generate_final_answer.
+
+    Preserves the original interface without image metadata context injection.
+    Use retrieve_text_chunks + generate_final_answer directly when image
+    context integration is needed.
+    """
+    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
+        session, message
+    )
+    return generate_final_answer(
+        session, user_content, tool_call_content, function_responses_content, sources
+    )
 
 
 def rebuild_chat_session(chat_history: List[Dict], history_dir: str = None) -> AgentChatSession:

@@ -83,6 +83,23 @@ export function ImageGrid() {
   const getColumnPaddingTop = (columnIndex: number) =>
     columnIndex % 2 === 1 ? staggerOffsetPx : 0;
 
+  const getTextValue = (value: unknown): string | null => {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  };
+
+  const getArrayValue = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item) => item.length > 0);
+  };
+
   const closeDetail = () => {
     setSelectedItem(null);
     setDetail(null);
@@ -247,16 +264,50 @@ export function ImageGrid() {
                 </div>
                 <div className="flex max-h-[70vh] flex-col">
                   <div className="flex-1 overflow-y-auto pr-2">
-                    <h2 className="mb-4 text-3xl tracking-tight">{detail.metadata.object ?? selectedItem.title}</h2>
-                    <div className="space-y-2 text-sm leading-6 text-foreground/85">
-                      <p><strong>Season:</strong> {detail.metadata.season ?? "-"}</p>
-                      <p><strong>Collection line:</strong> {detail.metadata.collection_line ?? "-"}</p>
-                      <p><strong>Look:</strong> {detail.metadata.look ?? "-"}</p>
-                      <p><strong>Year:</strong> {detail.metadata.year ?? "-"}</p>
-                      <p><strong>Description:</strong> {detail.metadata.description ?? "-"}</p>
-                      <p><strong>Materials:</strong> {detail.metadata.materials ?? "-"}</p>
-                      <p><strong>Working process:</strong> {detail.metadata.working_process ?? "-"}</p>
-                    </div>
+                    {(() => {
+                      const season =
+                        getTextValue(detail.metadata.season) ??
+                        getTextValue(detail.metadata.season_path) ??
+                        "-";
+                      const year =
+                        getTextValue(detail.metadata.year) ??
+                        getTextValue(detail.metadata.year_path) ??
+                        "-";
+                      const description =
+                        getTextValue(detail.metadata.description) ??
+                        getTextValue(detail.metadata.llm_description) ??
+                        "-";
+                      const materialList = [
+                        ...getArrayValue(detail.metadata.material_tags),
+                        ...getArrayValue(detail.metadata.materials_tags),
+                      ];
+                      const materialText = materialList.length
+                        ? Array.from(new Set(materialList)).join(", ")
+                        : getTextValue(detail.metadata.materials) ?? "-";
+                      const workingProcess =
+                        getTextValue(detail.metadata.working_process) ??
+                        getTextValue(detail.metadata.workingProcess) ??
+                        "-";
+                      const heading =
+                        getTextValue(detail.metadata.object) ??
+                        getTextValue(detail.metadata.file) ??
+                        selectedItem.title;
+
+                      return (
+                        <>
+                          <h2 className="mb-4 text-3xl tracking-tight">{heading}</h2>
+                          <div className="space-y-2 text-sm leading-6 text-foreground/85">
+                            <p><strong>Season:</strong> {season}</p>
+                            <p><strong>Collection line:</strong> {getTextValue(detail.metadata.collection_line) ?? "-"}</p>
+                            <p><strong>Look:</strong> {getTextValue(detail.metadata.look) ?? "-"}</p>
+                            <p><strong>Year:</strong> {year}</p>
+                            <p><strong>Description:</strong> {description}</p>
+                            <p><strong>Materials:</strong> {materialText}</p>
+                            <p><strong>Working process:</strong> {workingProcess}</p>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <div className="mt-4 border-t border-border/60 pt-4">
