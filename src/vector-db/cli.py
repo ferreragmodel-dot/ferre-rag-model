@@ -707,12 +707,24 @@ def load_fashion_show_photos():
             ids = batch["id"].tolist()
             embeddings = batch["embedding"].tolist()
             metadatas = []
+            documents = []
             for _, row in batch.iterrows():
                 path = unicodedata.normalize("NFC", str(row.get("path", "")))
                 if path and path not in metadata_by_path:
                     unmatched += 1
                 metadatas.append(build_metadata(row, path))
-            documents = batch["filename"].astype(str).tolist() if "filename" in batch.columns else ids
+                # Build a tag document string for $contains filtering via where_document.
+                # All tag values are joined into a single searchable text field.
+                rich = metadata_by_path.get(path)
+                if rich:
+                    all_tags = []
+                    for field in TAG_FIELDS:
+                        tags = rich.get(field) or []
+                        if isinstance(tags, list):
+                            all_tags.extend(tags)
+                    documents.append(" ".join(all_tags) if all_tags else str(row.get("filename", "")))
+                else:
+                    documents.append(str(row.get("filename", "")))
             collection.add(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
 
         total_loaded += len(data_df)

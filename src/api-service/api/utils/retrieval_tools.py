@@ -1,5 +1,103 @@
 from google.genai import types
 
+# ── Image archive constants ────────────────────────────────────────────────────
+IMAGE_SEASONS = ["FW1986-1987", "FW1987-1988", "FW1988-1989", "SS1987", "SS1988", "SS1989"]
+IMAGE_YEARS   = ["1986", "1987", "1988", "1989"]
+
+# Single FunctionDeclaration used to extract structured visual filters from a
+# free-text query.  All filter parameters are optional — the LLM only fills in
+# what the query explicitly mentions.
+image_search_func = types.FunctionDeclaration(
+    name="search_images",
+    description=(
+        "Search the Gianfranco Ferré fashion archive image collection. "
+        "Extract any visual or temporal filters mentioned in the query "
+        "(season, year, garments, colors, materials, etc.). "
+        "Always provide a search_query even if filters are present."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "search_query": {
+                "type": "string",
+                "description": (
+                    "Semantic search query for image similarity — rephrase the user's "
+                    "request as a descriptive visual sentence."
+                ),
+            },
+            "season_path": {
+                "type": "string",
+                "enum": IMAGE_SEASONS,
+                "description": "Season filter, e.g. 'FW1986-1987' or 'SS1988'.",
+            },
+            "year_path": {
+                "type": "string",
+                "enum": IMAGE_YEARS,
+                "description": "Year filter, e.g. '1987'.",
+            },
+            "garments_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Garment types present in the image (e.g. 'dress', 'jacket', 'coat').",
+            },
+            "colors_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Colors present in the image (e.g. 'black', 'red', 'ivory').",
+            },
+            "material_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Fabric or material (e.g. 'silk', 'wool', 'leather').",
+            },
+            "patterns_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Patterns or prints (e.g. 'stripe', 'floral', 'solid').",
+            },
+            "silhouette_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Silhouette descriptors (e.g. 'fitted', 'loose', 'structured').",
+            },
+            "length_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Garment length (e.g. 'knee', 'midi', 'floor').",
+            },
+            "neckline_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Neckline style (e.g. 'v neckline', 'round neck', 'high neck').",
+            },
+            "sleeve_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Sleeve style (e.g. 'long sleeve', 'sleeveless', 'short sleeve').",
+            },
+            "closure_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Closure type (e.g. 'button', 'zipper', 'buckle').",
+            },
+            "embellishment_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Embellishments or details (e.g. 'bow', 'lace', 'embroidery').",
+            },
+            "style_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Overall style (e.g. 'formal', 'casual', 'dress clothes').",
+            },
+        },
+        "required": ["search_query"],
+    },
+)
+
+image_search_tool = types.Tool(function_declarations=[image_search_func])
+
+# ── Text archive constants ─────────────────────────────────────────────────────
 # All documents available in the archive (filename without .pdf extension).
 # These match the 'doc' metadata field stored in ChromaDB.
 ARCHIVE_YEARS = ["1973", "1996", "1997", "1998", "1999", "2000", "2001", "2003", "2005", "2006", "2007", "2023"]

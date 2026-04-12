@@ -14,7 +14,7 @@ from google.genai import errors
 import vertexai
 from vertexai.vision_models import MultiModalEmbeddingModel
 
-from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls
+from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls, image_search_tool
 
 # Setup
 GCP_PROJECT = os.environ["GCP_PROJECT"]
@@ -163,6 +163,91 @@ def _build_user_content(message: Dict) -> Content:
         raise ValueError("Message must contain either text content or image")
 
     return Content(role="user", parts=user_parts)
+
+
+_IMAGE_TAG_FIELDS = [
+    "garments_tags", "colors_tags", "material_tags", "patterns_tags",
+    "silhouette_tags", "length_tags", "neckline_tags", "sleeve_tags",
+    "closure_tags", "embellishment_tags", "style_tags",
+]
+
+
+def _build_chroma_filters(args: dict) -> tuple[Optional[dict], Optional[dict]]:
+    """Convert LLM-extracted filter args into ChromaDB where + where_document clauses.
+
+    - Scalar fields (season_path, year_path): exact-match via `where` metadata filter.
+    - Tag fields: all tag values are stored as a single concatenated string in the
+      ChromaDB document field, so they are filtered via `where_document` $contains.
+      Multiple tag values are AND-ed (each must appear in the document).
+
+    Returns:
+        (where, where_document) — either may be None if no filters of that type.
+    """
+    # Scalar metadata filters
+    scalar_conditions = []
+    for field in ("season_path", "year_path"):
+        value = args.get(field)
+        if value:
+            scalar_conditions.append({field: value})
+
+    where: Optional[dict] = None
+    if len(scalar_conditions) == 1:
+        where = scalar_conditions[0]
+    elif len(scalar_conditions) > 1:
+        where = {"$and": scalar_conditions}
+
+    # Tag filters → where_document $contains (all tags are in the document text)
+    tag_values = []
+    for field in _IMAGE_TAG_FIELDS:
+        tag_values.extend(v for v in (args.get(field) or []) if v)
+
+    where_document: Optional[dict] = None
+    if len(tag_values) == 1:
+        where_document = {"$contains": tag_values[0]}
+    elif len(tag_values) > 1:
+        where_document = {"$and": [{"$contains": v} for v in tag_values]}
+
+    return where, where_document
+
+
+def extract_image_filters(query: str) -> tuple[str, Optional[dict], Optional[dict]]:
+    """Use Gemini to extract visual filters from a free-text query.
+
+    Returns:
+        (refined_search_query, where, where_document)
+        where       — ChromaDB metadata filter (season_path, year_path)
+        where_document — ChromaDB document filter (tag values via $contains)
+        Both are None when no filters of that type were identified.
+    """
+    try:
+        response = llm_client.models.generate_content(
+            model=GENERATIVE_MODEL,
+            contents=[Content(role="user", parts=[Part.from_text(text=query)])],
+            config=types.GenerateContentConfig(
+                temperature=0,
+                tools=[image_search_tool],
+                tool_config=types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(mode="any")
+                ),
+            ),
+        )
+        function_calls = [
+            part.function_call
+            for part in response.candidates[0].content.parts
+            if part.function_call
+        ]
+        if not function_calls:
+            return query, None, None
+
+        args = dict(function_calls[0].args)
+        refined_query = args.get("search_query") or query
+        where, where_document = _build_chroma_filters(args)
+        print(f"Image filters — query: '{refined_query}', where: {where}, where_document: {where_document}")
+        return refined_query, where, where_document
+
+    except Exception as e:
+        print(f"extract_image_filters failed, falling back to plain query: {e}")
+        return query, None, None
 
 
 def retrieve_text_chunks(session: AgentChatSession, message: Dict) -> tuple:
