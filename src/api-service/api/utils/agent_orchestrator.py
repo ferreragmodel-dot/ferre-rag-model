@@ -2,6 +2,7 @@ import os
 from typing import Dict, Any, List, Optional
 from fastapi import HTTPException
 import base64
+import mimetypes
 from pathlib import Path
 import traceback
 import chromadb
@@ -70,6 +71,8 @@ COLLECTION_NAME = "recursive-split-collection"
 # Initialize agent chat sessions
 chat_sessions: Dict[str, "AgentChatSession"] = {}
 
+DATASET_PREFIX = "Dataset DataShack 2026/"
+
 
 class AgentChatSession:
     """Stateful wrapper for the agentic conversation history.
@@ -85,6 +88,70 @@ class AgentChatSession:
 def create_chat_session(past_history: List[Content] = None) -> AgentChatSession:
     """Create a new agent chat session, optionally with pre-existing history."""
     return AgentChatSession(history=list(past_history) if past_history else [])
+
+
+def _resolve_design_images_dir() -> Path | None:
+    env_path = os.environ.get("DESIGN_IMAGES_DIR")
+    if env_path and Path(env_path).exists():
+        return Path(env_path)
+
+    docker_path = Path("/design-images")
+    if docker_path.exists():
+        return docker_path
+
+    local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
+    if local_repo_dataset.exists():
+        return local_repo_dataset
+
+    return None
+
+
+def _build_retrieved_images_content(selected_images: Optional[List[Dict[str, str]]]) -> Optional[Content]:
+    if not selected_images:
+        return None
+
+    design_images_dir = _resolve_design_images_dir()
+    if design_images_dir is None:
+        return None
+
+    parts: List[Part] = [
+        Part.from_text(
+            text=(
+                "These are the top archive images retrieved for this query. "
+                "Use the actual visuals together with the retrieved text chunks when forming your answer."
+            )
+        )
+    ]
+
+    for image in selected_images[:3]:
+        source_path = image.get("source_path")
+        if not source_path:
+            continue
+
+        relative_path = source_path.removeprefix(DATASET_PREFIX)
+        image_path = (design_images_dir / relative_path).resolve()
+
+        try:
+            image_path.relative_to(design_images_dir.resolve())
+        except ValueError:
+            continue
+
+        if not image_path.exists():
+            continue
+
+        mime_type, _ = mimetypes.guess_type(str(image_path))
+        with image_path.open("rb") as image_file:
+            parts.append(
+                Part.from_bytes(
+                    data=image_file.read(),
+                    mime_type=mime_type or "image/jpeg",
+                )
+            )
+
+    if len(parts) == 1:
+        return None
+
+    return Content(role="user", parts=parts)
 
 
 def generate_query_embedding(query: str) -> List[float]:
@@ -317,6 +384,7 @@ def generate_final_answer(
     function_responses_content: Optional[Content],
     sources: List,
     image_context: Optional[str] = None,
+    selected_images: Optional[List[Dict[str, str]]] = None,
 ) -> tuple:
     """
     Step 3: Generate the grounded final answer.
@@ -334,14 +402,19 @@ def generate_final_answer(
             system = system + "\n\n" + image_context
 
         contents = list(session.history) + [user_content]
+        retrieved_images_content = _build_retrieved_images_content(selected_images)
 
         if tool_call_content is not None:
             contents.extend([tool_call_content, function_responses_content])
+            if retrieved_images_content is not None:
+                contents.append(retrieved_images_content)
             config = types.GenerateContentConfig(
                 system_instruction=system,
                 tools=[ferre_archive_tool],
             )
         else:
+            if retrieved_images_content is not None:
+                contents.append(retrieved_images_content)
             config = types.GenerateContentConfig(system_instruction=system)
 
         final_response = llm_client.models.generate_content(

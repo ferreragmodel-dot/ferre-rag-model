@@ -231,7 +231,7 @@ async def start_chat_with_llm(
     image_context = _build_image_context(ranked_items) if ranked_items else None
     assistant_response_text, response_sources = generate_final_answer(
         chat_session, user_content, tool_call_content, function_responses_content,
-        sources, image_context
+        sources, image_context, top_images
     )
 
     title = (message_dict.get("content") or "Image chat")[:50] + "..."
@@ -317,7 +317,7 @@ async def continue_chat_with_llm(
     image_context = _build_image_context(ranked_items) if ranked_items else None
     assistant_response_text, response_sources = generate_final_answer(
         chat_session, user_content, tool_call_content, function_responses_content,
-        sources, image_context
+        sources, image_context, top_images
     )
 
     chat["dts"] = int(time.time())
