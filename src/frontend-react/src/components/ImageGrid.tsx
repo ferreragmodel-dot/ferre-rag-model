@@ -100,6 +100,29 @@ export function ImageGrid() {
       .filter((item) => item.length > 0);
   };
 
+  const dedupeValues = (values: string[]): string[] => {
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    values.forEach((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      unique.push(value);
+    });
+    return unique;
+  };
+
+  const isNumericTitle = (value: string): boolean => /^\d+$/.test(value.trim());
+
+  const toTitleCase = (value: string): string =>
+    value
+      .split(" ")
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
   const closeDetail = () => {
     setSelectedItem(null);
     setDetail(null);
@@ -262,48 +285,117 @@ export function ImageGrid() {
                     sizes="320px"
                   />
                 </div>
-                <div className="flex max-h-[70vh] flex-col">
+                <div className="flex max-h-[70vh] flex-col md:h-[400px]">
                   <div className="flex-1 overflow-y-auto pr-2">
                     {(() => {
                       const season =
-                        getTextValue(detail.metadata.season) ??
                         getTextValue(detail.metadata.season_path) ??
-                        "-";
+                        getTextValue(detail.metadata.season);
                       const year =
-                        getTextValue(detail.metadata.year) ??
                         getTextValue(detail.metadata.year_path) ??
-                        "-";
-                      const description =
-                        getTextValue(detail.metadata.description) ??
-                        getTextValue(detail.metadata.llm_description) ??
-                        "-";
+                        getTextValue(detail.metadata.year);
+                      const archivalDescription = getTextValue(detail.metadata.description);
+                      const llmDescription = getTextValue(detail.metadata.llm_description);
+                      const description = archivalDescription ?? llmDescription;
+                      const isAIGeneratedDescription = !archivalDescription && Boolean(llmDescription);
                       const materialList = [
                         ...getArrayValue(detail.metadata.material_tags),
                         ...getArrayValue(detail.metadata.materials_tags),
                       ];
                       const materialText = materialList.length
-                        ? Array.from(new Set(materialList)).join(", ")
-                        : getTextValue(detail.metadata.materials) ?? "-";
+                        ? dedupeValues(materialList).map(toTitleCase).join(", ")
+                        : getTextValue(detail.metadata.materials)?.split(",").map((part) => toTitleCase(part.trim())).join(", ");
                       const workingProcess =
                         getTextValue(detail.metadata.working_process) ??
-                        getTextValue(detail.metadata.workingProcess) ??
-                        "-";
+                        getTextValue(detail.metadata.workingProcess);
                       const heading =
                         getTextValue(detail.metadata.object) ??
                         getTextValue(detail.metadata.file) ??
-                        selectedItem.title;
+                        getTextValue(detail.metadata.look) ??
+                        getTextValue(detail.metadata.label) ??
+                        (isNumericTitle(selectedItem.title)
+                          ? [
+                              getTextValue(detail.metadata.collection_line),
+                              getTextValue(detail.metadata.season_path),
+                            ]
+                              .filter((value): value is string => Boolean(value))
+                              .join(" ") || `Archive item ${selectedItem.id}`
+                          : selectedItem.title);
+                      const collectionLine = getTextValue(detail.metadata.collection_line);
+                      const look = getTextValue(detail.metadata.look);
+
+                      const detailRows = [
+                        { label: "Look", value: look },
+                        { label: "Materials", value: materialText },
+                        { label: "Working process", value: workingProcess },
+                      ].filter((row) => Boolean(row.value));
+
+                      const tagSections = [
+                        {
+                          label: "Garments",
+                          values: dedupeValues(getArrayValue(detail.metadata.garments_tags)),
+                        },
+                        {
+                          label: "Colors",
+                          values: dedupeValues(getArrayValue(detail.metadata.colors_tags)),
+                        },
+                        {
+                          label: "Materials tags",
+                          values: dedupeValues(getArrayValue(detail.metadata.material_tags)).map(toTitleCase),
+                        },
+                        {
+                          label: "Patterns",
+                          values: dedupeValues(getArrayValue(detail.metadata.patterns_tags)),
+                        },
+                        {
+                          label: "Silhouette",
+                          values: dedupeValues(getArrayValue(detail.metadata.silhouette_tags)),
+                        },
+                        {
+                          label: "Style",
+                          values: dedupeValues(getArrayValue(detail.metadata.style_tags)),
+                        },
+                      ].filter((section) => section.values.length > 0);
 
                       return (
                         <>
                           <h2 className="mb-4 text-3xl tracking-tight">{heading}</h2>
                           <div className="space-y-2 text-sm leading-6 text-foreground/85">
-                            <p><strong>Season:</strong> {season}</p>
-                            <p><strong>Collection line:</strong> {getTextValue(detail.metadata.collection_line) ?? "-"}</p>
-                            <p><strong>Look:</strong> {getTextValue(detail.metadata.look) ?? "-"}</p>
-                            <p><strong>Year:</strong> {year}</p>
-                            <p><strong>Description:</strong> {description}</p>
-                            <p><strong>Materials:</strong> {materialText}</p>
-                            <p><strong>Working process:</strong> {workingProcess}</p>
+                            {season ? <p><strong>Season:</strong> {season}</p> : null}
+                            {year ? <p><strong>Year:</strong> {year}</p> : null}
+                            {collectionLine ? <p><strong>Collection line:</strong> {collectionLine}</p> : null}
+                            {description ? (
+                              <p>
+                                <strong>Description:</strong> {description}{" "}
+                                {isAIGeneratedDescription ? (
+                                  <span className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white/60 px-2 py-0.5 text-[10px] font-medium tracking-[0.04em] text-foreground/65">
+                                    AI generated description
+                                  </span>
+                                ) : null}
+                              </p>
+                            ) : null}
+                            {detailRows.map((row) => (
+                              <p key={row.label}><strong>{row.label}:</strong> {row.value}</p>
+                            ))}
+                            {tagSections.length ? (
+                              <div className="pt-2">
+                                {tagSections.map((section) => (
+                                  <div key={section.label} className="mb-3">
+                                    <p className="mb-1 font-semibold">{section.label}:</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {section.values.map((value) => (
+                                        <span
+                                          key={`${section.label}-${value}`}
+                                          className="rounded-full border border-black/10 bg-white/60 px-2.5 py-0.5 text-[11px] leading-5 text-foreground/80"
+                                        >
+                                          {value}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         </>
                       );
