@@ -1073,7 +1073,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Load fashion show photo embeddings into ChromaDB (single collection: images-fashion-show-photos)",
     )
-    parser.add_argument("--chunk_type", default="recursive-split",
+    parser.add_argument("--chunk_type", default="semantic-split",
                         help="char-split | recursive-split | semantic-split")
     
     # add new argparse options for metadata filtering

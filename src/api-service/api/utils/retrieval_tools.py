@@ -237,8 +237,7 @@ def search_archive(search_content, collection, embed_func, top_k=10):
     for doc, meta in zip(docs, metadatas):
         sources.append({
             "document": meta.get("doc", "Unknown"),
-            "year": meta.get("year", "Unknown"),
-            "excerpt": doc[:400] + "..." if len(doc) > 400 else doc,
+            "excerpt": doc,
         })
 
     text = "\n\n".join(docs) if docs else "No results found."
@@ -264,8 +263,7 @@ def search_by_year(search_content, year, collection, embed_func, top_k=10):
     for doc, meta in zip(docs, metadatas):
         sources.append({
             "document": meta.get("doc", "Unknown"),
-            "year": meta.get("year", "Unknown"),
-            "excerpt": doc[:400] + "..." if len(doc) > 400 else doc,
+            "excerpt": doc,
         })
 
     text = "\n\n".join(docs) if docs else f"No results found for year '{year}'."
@@ -291,8 +289,7 @@ def search_by_document(search_content, doc, collection, embed_func, top_k=10):
     for doc_text, meta in zip(docs, metadatas):
         sources.append({
             "document": meta.get("doc", "Unknown"),
-            "year": meta.get("year", "Unknown"),
-            "excerpt": doc_text[:200] + "..." if len(doc_text) > 200 else doc_text,
+            "excerpt": doc_text,
         })
 
     text = "\n\n".join(docs) if docs else f"No results found in '{doc}'."

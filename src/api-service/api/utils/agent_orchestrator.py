@@ -66,7 +66,7 @@ try:
 except Exception as chroma_error:
     chroma_client = None
     print(f"ChromaDB unavailable; running agent without retrieval tools: {chroma_error}")
-COLLECTION_NAME = "recursive-split-collection"
+COLLECTION_NAME = "semantic-split-collection"
 
 # Initialize agent chat sessions
 chat_sessions: Dict[str, "AgentChatSession"] = {}

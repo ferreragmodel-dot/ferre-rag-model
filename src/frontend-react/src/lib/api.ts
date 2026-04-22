@@ -20,7 +20,6 @@ export interface ChatImage {
 
 export interface ChatSource {
   document: string;
-  year: string;
   excerpt: string;
 }
 
