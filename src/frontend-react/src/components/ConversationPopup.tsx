@@ -245,7 +245,7 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                               p: ({ children }) => (
                                 <p className="mb-2 last:mb-0">
                                   {Array.isArray(children) ? renderWithCitations(
-                                    children.join(""),
+                                    children.map(c => typeof c === "string" ? c : "").join(""),
                                     setActiveCitation,
                                     activeCitation
                                   ) : renderWithCitations(
@@ -256,7 +256,19 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                                 </p>
                               ),
                               ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                              li: ({ children }) => <li className="mb-1">{children}</li>,
+                              li: ({ children }) => (
+                                <li className="mb-1">
+                                  {Array.isArray(children) ? renderWithCitations(
+                                    children.map(c => typeof c === "string" ? c : "").join(""),
+                                    setActiveCitation,
+                                    activeCitation
+                                  ) : renderWithCitations(
+                                    String(children),
+                                    setActiveCitation,
+                                    activeCitation
+                                  )}
+                                </li>
+                              ),
                               strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
                               em: ({ children }) => <em className="italic">{children}</em>,
                             }}
@@ -313,10 +325,10 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                     aria-modal="true"
                   >
                     <div
-                      className="bg-white rounded-lg p-6 max-w-md w-11/12 shadow-lg border border-border"
+                      className="bg-white rounded-lg p-6 max-w-md w-11/12 max-h-[70vh] flex flex-col shadow-lg border border-border"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-start justify-between mb-4 flex-shrink-0">
                         <div>
                           <div className="text-xs uppercase tracking-wide text-foreground/50 mb-1">Document</div>
                           <h3 className={`text-lg font-semibold ${
@@ -329,25 +341,14 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                         </div>
                         <button
                           onClick={() => setActiveCitation(null)}
-                          className="text-foreground/50 hover:text-foreground text-xl leading-none"
+                          className="text-foreground/50 hover:text-foreground text-xl leading-none ml-4 flex-shrink-0"
                           aria-label="Close"
                         >
                           ✕
                         </button>
                       </div>
 
-                      <div className="mb-4">
-                        <div className="text-xs uppercase tracking-wide text-foreground/50 mb-1">Year</div>
-                        <div className={`text-sm ${
-                          sources[activeCitation - 1].year === "Unknown"
-                            ? "italic text-foreground/60"
-                            : "text-foreground/70"
-                        }`}>
-                          {sources[activeCitation - 1].year}
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-foreground/80 leading-relaxed">
+                      <div className="text-sm text-foreground/80 leading-relaxed overflow-y-auto">
                         {sources[activeCitation - 1].excerpt}
                       </div>
                     </div>
