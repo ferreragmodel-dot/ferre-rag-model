@@ -120,6 +120,38 @@ export async function continueChat(chatId: string, message: string): Promise<Cha
   return response.json() as Promise<ChatData>;
 }
 
+export async function startItemChat(sourcePath: string, message: string): Promise<ChatData> {
+  const url = new URL("/llm-agent/item-chats", API_BASE_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_path: sourcePath, content: message }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to start item chat: ${response.status}`);
+  }
+
+  return response.json() as Promise<ChatData>;
+}
+
+export async function continueItemChat(chatId: string, message: string): Promise<ChatData> {
+  const url = new URL(`/llm-agent/item-chats/${chatId}`, API_BASE_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: message }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to continue item chat: ${response.status}`);
+  }
+
+  return response.json() as Promise<ChatData>;
+}
+
 export async function getChat(chatId: string): Promise<ChatData> {
   const url = new URL(`/llm-agent/chats/${chatId}`, API_BASE_URL);
 

@@ -1,33 +1,23 @@
 "use client";
 
-import Image from "next/image";
-import { Search } from "lucide-react";
 import { InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ImageCard } from "@/components/ImageCard";
-import { ConversationPopup } from "@/components/ConversationPopup";
-import { Input } from "@/components/ui/input";
-import { fetchArchiveItemDetail, fetchLandingFeed } from "@/lib/api";
-import { ArchiveImageItem, ArchiveItemDetailResponse, LandingFeedResponse } from "@/lib/types";
+import { ItemDetailModal } from "@/components/ItemDetailModal";
+import { fetchLandingFeed } from "@/lib/api";
+import { ArchiveImageItem, LandingFeedResponse } from "@/lib/types";
 
 const PAGE_SIZE = 24;
 const GRID_GAP_PX = 16;
 const CARD_ASPECT_HEIGHT_OVER_WIDTH = 5 / 4;
 
 function getColumnCount(width: number): number {
-  if (width >= 1280) {
-    return 5;
-  }
-  if (width >= 1024) {
-    return 4;
-  }
-  if (width >= 640) {
-    return 3;
-  }
+  if (width >= 1280) return 5;
+  if (width >= 1024) return 4;
+  if (width >= 640) return 3;
   return 2;
 }
-
 
 export function ImageGrid() {
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -35,11 +25,6 @@ export function ImageGrid() {
   const [columnCount, setColumnCount] = useState(2);
   const [staggerOffsetPx, setStaggerOffsetPx] = useState(0);
   const [selectedItem, setSelectedItem] = useState<ArchiveImageItem | null>(null);
-  const [detail, setDetail] = useState<ArchiveItemDetailResponse | null>(null);
-  const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [imageQueryInput, setImageQueryInput] = useState("");
-  const [conversationQuery, setConversationQuery] = useState<string | null>(null);
 
   const { data, error, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery<
@@ -83,87 +68,9 @@ export function ImageGrid() {
   const getColumnPaddingTop = (columnIndex: number) =>
     columnIndex % 2 === 1 ? staggerOffsetPx : 0;
 
-  const getTextValue = (value: unknown): string | null => {
-    if (typeof value !== "string") {
-      return null;
-    }
-    const trimmed = value.trim();
-    return trimmed.length ? trimmed : null;
-  };
-
-  const getArrayValue = (value: unknown): string[] => {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value
-      .map((item) => (typeof item === "string" ? item.trim() : ""))
-      .filter((item) => item.length > 0);
-  };
-
-  const dedupeValues = (values: string[]): string[] => {
-    const seen = new Set<string>();
-    const unique: string[] = [];
-    values.forEach((value) => {
-      const key = value.toLowerCase();
-      if (seen.has(key)) {
-        return;
-      }
-      seen.add(key);
-      unique.push(value);
-    });
-    return unique;
-  };
-
-  const isNumericTitle = (value: string): boolean => /^\d+$/.test(value.trim());
-
-  const toTitleCase = (value: string): string =>
-    value
-      .split(" ")
-      .filter(Boolean)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-
-  const closeDetail = () => {
-    setSelectedItem(null);
-    setDetail(null);
-    setDetailError(null);
-    setIsDetailLoading(false);
-    setImageQueryInput("");
-  };
-
-  const handleImageQuerySubmit = () => {
-    const trimmed = imageQueryInput.trim();
-    if (!trimmed) {
-      return;
-    }
-    setConversationQuery(trimmed);
-    closeDetail();
-  };
-
-  const handleImageClick = (item: ArchiveImageItem) => {
-    setSelectedItem(item);
-    setDetail(null);
-    setDetailError(null);
-    setIsDetailLoading(true);
-
-    fetchArchiveItemDetail(item.source_path)
-      .then((response) => {
-        setDetail(response);
-      })
-      .catch((error: Error) => {
-        setDetailError(error.message);
-      })
-      .finally(() => {
-        setIsDetailLoading(false);
-      });
-  };
-
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel) {
-      return;
-    }
-
+    if (!sentinel) return;
     const observer = new IntersectionObserver(
       (entries) => {
         const firstEntry = entries[0];
@@ -173,7 +80,6 @@ export function ImageGrid() {
       },
       { rootMargin: "400px" },
     );
-
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
@@ -243,7 +149,7 @@ export function ImageGrid() {
             style={{ paddingTop: `${getColumnPaddingTop(columnIndex)}px` }}
           >
             {column.map((item) => (
-              <ImageCard key={item.id} item={item} onClick={handleImageClick} />
+              <ImageCard key={item.id} item={item} onClick={setSelectedItem} />
             ))}
           </div>
         ))}
@@ -256,180 +162,10 @@ export function ImageGrid() {
       ) : null}
 
       {selectedItem ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
-          <div
-            className="relative w-full max-w-5xl rounded-2xl bg-[#f2f2f2] p-6 shadow-2xl"
-            style={{ fontFamily: 'Didot, "Bodoni 72", "Times New Roman", serif' }}
-          >
-            <button
-              type="button"
-              onClick={closeDetail}
-              className="absolute right-4 top-3 text-xl text-foreground/65 hover:text-foreground"
-              aria-label="Close"
-            >
-              ×
-            </button>
-
-            {isDetailLoading ? (
-              <div className="py-16 text-center text-sm text-foreground/70">Loading archive detail...</div>
-            ) : detailError ? (
-              <div className="py-16 text-center text-sm text-red-700">Failed to load detail: {detailError}</div>
-            ) : detail ? (
-              <div className="grid gap-6 md:grid-cols-[320px,1fr]">
-                <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border bg-card">
-                  <Image
-                    src={detail.image_url}
-                    alt={selectedItem.title}
-                    fill
-                    className="object-cover"
-                    sizes="320px"
-                  />
-                </div>
-                <div className="flex max-h-[70vh] flex-col md:h-[400px]">
-                  <div className="flex-1 overflow-y-auto pr-2">
-                    {(() => {
-                      const season =
-                        getTextValue(detail.metadata.season_path) ??
-                        getTextValue(detail.metadata.season);
-                      const year =
-                        getTextValue(detail.metadata.year_path) ??
-                        getTextValue(detail.metadata.year);
-                      const archivalDescription = getTextValue(detail.metadata.description);
-                      const llmDescription = getTextValue(detail.metadata.llm_description);
-                      const description = archivalDescription ?? llmDescription;
-                      const isAIGeneratedDescription = !archivalDescription && Boolean(llmDescription);
-                      const materialList = [
-                        ...getArrayValue(detail.metadata.material_tags),
-                        ...getArrayValue(detail.metadata.materials_tags),
-                      ];
-                      const materialText = materialList.length
-                        ? dedupeValues(materialList).map(toTitleCase).join(", ")
-                        : getTextValue(detail.metadata.materials)?.split(",").map((part) => toTitleCase(part.trim())).join(", ");
-                      const workingProcess =
-                        getTextValue(detail.metadata.working_process) ??
-                        getTextValue(detail.metadata.workingProcess);
-                      const heading =
-                        getTextValue(detail.metadata.object) ??
-                        getTextValue(detail.metadata.file) ??
-                        getTextValue(detail.metadata.look) ??
-                        getTextValue(detail.metadata.label) ??
-                        (isNumericTitle(selectedItem.title)
-                          ? [
-                              getTextValue(detail.metadata.collection_line),
-                              getTextValue(detail.metadata.season_path),
-                            ]
-                              .filter((value): value is string => Boolean(value))
-                              .join(" ") || `Archive item ${selectedItem.id}`
-                          : selectedItem.title);
-                      const collectionLine = getTextValue(detail.metadata.collection_line);
-                      const look = getTextValue(detail.metadata.look);
-
-                      const detailRows = [
-                        { label: "Look", value: look },
-                        { label: "Materials", value: materialText },
-                        { label: "Working process", value: workingProcess },
-                      ].filter((row) => Boolean(row.value));
-
-                      const tagSections = [
-                        {
-                          label: "Garments",
-                          values: dedupeValues(getArrayValue(detail.metadata.garments_tags)),
-                        },
-                        {
-                          label: "Colors",
-                          values: dedupeValues(getArrayValue(detail.metadata.colors_tags)),
-                        },
-                        {
-                          label: "Materials tags",
-                          values: dedupeValues(getArrayValue(detail.metadata.material_tags)).map(toTitleCase),
-                        },
-                        {
-                          label: "Patterns",
-                          values: dedupeValues(getArrayValue(detail.metadata.patterns_tags)),
-                        },
-                        {
-                          label: "Silhouette",
-                          values: dedupeValues(getArrayValue(detail.metadata.silhouette_tags)),
-                        },
-                        {
-                          label: "Style",
-                          values: dedupeValues(getArrayValue(detail.metadata.style_tags)),
-                        },
-                      ].filter((section) => section.values.length > 0);
-
-                      return (
-                        <>
-                          <h2 className="mb-4 text-3xl tracking-tight">{heading}</h2>
-                          <div className="space-y-2 text-sm leading-6 text-foreground/85">
-                            {season ? <p><strong>Season:</strong> {season}</p> : null}
-                            {year ? <p><strong>Year:</strong> {year}</p> : null}
-                            {collectionLine ? <p><strong>Collection line:</strong> {collectionLine}</p> : null}
-                            {description ? (
-                              <p>
-                                <strong>Description:</strong> {description}{" "}
-                                {isAIGeneratedDescription ? (
-                                  <span className="ml-2 inline-flex items-center rounded-full border border-black/10 bg-white/60 px-2 py-0.5 text-[10px] font-medium tracking-[0.04em] text-foreground/65">
-                                    AI generated description
-                                  </span>
-                                ) : null}
-                              </p>
-                            ) : null}
-                            {detailRows.map((row) => (
-                              <p key={row.label}><strong>{row.label}:</strong> {row.value}</p>
-                            ))}
-                            {tagSections.length ? (
-                              <div className="pt-2">
-                                {tagSections.map((section) => (
-                                  <div key={section.label} className="mb-3">
-                                    <p className="mb-1 font-semibold">{section.label}:</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {section.values.map((value) => (
-                                        <span
-                                          key={`${section.label}-${value}`}
-                                          className="rounded-full border border-black/10 bg-white/60 px-2.5 py-0.5 text-[11px] leading-5 text-foreground/80"
-                                        >
-                                          {value}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-
-                  <div className="mt-4 border-t border-border/60 pt-4">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/45" />
-                      <Input
-                        className="pl-10 text-base"
-                        placeholder="Ask the Archive"
-                        aria-label="Ask the archive"
-                        value={imageQueryInput}
-                        onChange={(e) => setImageQueryInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleImageQuerySubmit();
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {conversationQuery ? (
-        <ConversationPopup
-          initialQuery={conversationQuery}
-          onClose={() => setConversationQuery(null)}
+        <ItemDetailModal
+          sourcePath={selectedItem.source_path}
+          imageUrl={selectedItem.image_url}
+          onClose={() => setSelectedItem(null)}
         />
       ) : null}
     </section>

@@ -7,7 +7,15 @@ import { ArrowLeft, Search } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Input } from "@/components/ui/input";
-import { startChat, continueChat, ChatMessage as APIChatMessage, ChatSource } from "@/lib/api";
+import { ItemDetailModal } from "@/components/ItemDetailModal";
+import {
+  startChat,
+  continueChat,
+  startItemChat,
+  continueItemChat,
+  ChatMessage as APIChatMessage,
+  ChatSource,
+} from "@/lib/api";
 
 interface ConversationImageItem {
   source_path: string;
@@ -17,6 +25,8 @@ interface ConversationImageItem {
 interface ConversationPopupProps {
   initialQuery: string;
   onClose: () => void;
+  /** When provided, the popup operates in item-chat mode scoped to this item. */
+  itemSourcePath?: string;
 }
 
 
@@ -71,7 +81,7 @@ function renderWithCitations(
   return parts;
 }
 
-export function ConversationPopup({ initialQuery, onClose }: ConversationPopupProps) {
+export function ConversationPopup({ initialQuery, onClose, itemSourcePath }: ConversationPopupProps) {
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<APIChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -80,6 +90,7 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
   const [images, setImages] = useState<ConversationImageItem[]>([]);
   const [sources, setSources] = useState<ChatSource[]>([]);
   const [activeCitation, setActiveCitation] = useState<number | null>(null);
+  const [selectedChatImage, setSelectedChatImage] = useState<ConversationImageItem | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change
@@ -104,7 +115,9 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
         setIsLoading(true);
         setError(null);
 
-        const chatData = await startChat(initialQuery);
+        const chatData = itemSourcePath
+          ? await startItemChat(itemSourcePath, initialQuery)
+          : await startChat(initialQuery);
         setChatId(chatData.chat_id);
         setMessages(chatData.messages);
 
@@ -143,7 +156,9 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
 
     setIsLoading(true);
     try {
-      const chatData = await continueChat(chatId, userMessage);
+      const chatData = itemSourcePath
+        ? await continueItemChat(chatId, userMessage)
+        : await continueChat(chatId, userMessage);
       setMessages(chatData.messages);
       // Update images and sources from response
       if (chatData.images) {
@@ -167,6 +182,7 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 p-4" role="dialog" aria-modal="true">
       <div className="grid h-[90vh] w-full max-w-4xl grid-cols-[140px,1fr] overflow-hidden rounded-lg border border-border bg-[#f2f2f2]">
         <aside className="border-r border-border bg-[#d9d9d9] p-4">
@@ -299,9 +315,11 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                   <div className="mb-6">
                     <div className="grid grid-cols-3 gap-3">
                       {images.map((img, idx) => (
-                        <div
+                        <button
                           key={idx}
-                          className="relative aspect-[3/5] overflow-hidden rounded-lg border border-border bg-muted"
+                          type="button"
+                          onClick={() => setSelectedChatImage(img)}
+                          className="relative aspect-[3/5] overflow-hidden rounded-lg border border-border bg-muted transition-opacity hover:opacity-80"
                         >
                           <Image
                             src={img.image_url}
@@ -310,7 +328,7 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
                             className="object-cover object-top"
                             sizes="(max-width: 768px) 100px, 150px"
                           />
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -400,5 +418,14 @@ export function ConversationPopup({ initialQuery, onClose }: ConversationPopupPr
         </section>
       </div>
     </div>
+
+    {selectedChatImage ? (
+      <ItemDetailModal
+        sourcePath={selectedChatImage.source_path}
+        imageUrl={selectedChatImage.image_url}
+        onClose={() => setSelectedChatImage(null)}
+      />
+    ) : null}
+  </>
   );
 }

@@ -38,26 +38,34 @@ multimodal_model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding
 
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
-You are an AI assistant specialized in Gianfranco Ferre and fashion archive research. Your responses are based solely on the information provided in the text chunks given to you. Do not use any external knowledge or make assumptions beyond what is explicitly stated in these chunks.
+You are an AI assistant specialized in Gianfranco Ferré and fashion archive research. Each response you produce is accompanied by 3 archive images shown to the user alongside your text. You receive both retrieved text chunks from the archive and metadata/visuals of those images as context.
 
 When answering a query:
-1. Carefully read all the text chunks provided.
-2. Identify the most relevant information from these chunks to address the user's question.
-3. Formulate your response using only the information found in the given chunks.
-4. When citing information, use inline citations in the format [1], [2], [3], etc. that reference the numbered sources.
-5. **Only cite the most important and unique sources (maximum 5 citations).** Do not over-cite; focus on the most relevant information sources.
-6. If the provided chunks do not contain sufficient information to answer the query, state that you don't have enough information to provide a complete answer.
-7. Always maintain a professional and knowledgeable tone, befitting a Ferre archive expert.
-8. If there are contradictions in the provided chunks, mention this in your response and explain the different viewpoints presented.
+1. Carefully read all the text chunks and image context provided.
+2. Identify the most relevant information to address the user's question.
+3. Formulate your response using only the information found in the provided context.
+4. When citing text sources, use inline citations in the format [1], [2], [3], etc.
+5. **Only cite the most important and unique sources (maximum 5 citations).** Do not over-cite.
+6. If the provided context does not contain sufficient information, state that clearly.
+7. Always maintain a professional and knowledgeable tone, befitting a Ferré archive expert.
+8. If there are contradictions in the provided context, mention and explain them.
+
+Calibrate the balance between text and images based on the nature of the query:
+
+- **Text-focused queries** (Ferré's philosophy, creative process, biography, opinions on materials, elegance, architecture, travel, etc.): Ground your answer primarily in the retrieved text chunks and cite them. Reference the shown images only briefly when they directly illustrate a point — do not make them the focus.
+
+- **Image-focused queries** (requests to see specific garments, colors, styles, silhouettes, seasons, or collections): Focus your response on describing and contextualizing what is visible in the retrieved images. Keep the textual response concise; use the text chunks only for brief background. Do not cite text sources heavily.
+
+- **Mixed queries**: Balance both accordingly — use text for conceptual depth and images for visual illustration.
+
+When the user asks for more details, background, or specific information about one of the shown images (e.g. "tell me more about image 2", "what materials is image 1 made of?", "who wore image 3?"): respond with exactly this, replacing N with the image number:
+"For more details about this piece, click on Image N to open its dedicated archive page and start a conversation directly about it."
+Do not attempt to answer detail questions about specific shown images beyond what is already visible in the image context provided.
 
 Remember:
-- You are an expert in Ferre and fashion, but your knowledge is limited to the information in the provided chunks.
-- Do not invent information or draw from knowledge outside of the given text chunks.
-- If asked about topics unrelated to Ferre or fashion, politely redirect the conversation back to archive-related subjects.
-- Be concise in your responses while ensuring you cover all relevant information from the chunks.
-- Always cite your sources with [N] markers when making factual claims, but keep citations minimal and meaningful.
-
-Your goal is to provide accurate, helpful information about Ferre and fashion based solely on the content of the text chunks you receive with each query.
+- Do not invent information or draw from knowledge outside of the provided context.
+- If asked about topics unrelated to Ferré or fashion, politely redirect the conversation.
+- Be concise while covering all relevant information.
 """
 
 # Connect to ChromaDB (optional for local non-RAG runs)
@@ -317,11 +325,20 @@ def extract_image_filters(query: str) -> tuple[str, Optional[dict], Optional[dic
         return query, None, None
 
 
-def retrieve_text_chunks(session: AgentChatSession, message: Dict) -> tuple:
+def retrieve_text_chunks(
+    session: AgentChatSession,
+    message: Dict,
+    retrieval_hint: Optional[str] = None,
+) -> tuple:
     """
     Steps 1 & 2 of the agentic pipeline: tool selection + ChromaDB retrieval.
 
     Does NOT modify session.history — call generate_final_answer() next.
+
+    Args:
+        retrieval_hint: Optional context prepended to the user message only during
+            tool selection (Step 1) to steer RAG towards relevant chunks.
+            Not stored in session history.
 
     Returns:
         tuple: (user_content, tool_call_content, function_responses_content, sources)
@@ -336,10 +353,22 @@ def retrieve_text_chunks(session: AgentChatSession, message: Dict) -> tuple:
 
         collection = chroma_client.get_collection(name=COLLECTION_NAME)
 
-        # Step 1: LLM selects which tool(s) to call
+        # Step 1: LLM selects which tool(s) to call.
+        # If a retrieval_hint is provided, prepend it to the user content so the
+        # LLM can use item metadata to enrich its tool call, without storing
+        # the hint in session history.
+        if retrieval_hint:
+            hint_content = Content(
+                role="user",
+                parts=[Part.from_text(text=retrieval_hint)] + list(user_content.parts),
+            )
+            tool_selection_contents = session.history + [hint_content]
+        else:
+            tool_selection_contents = session.history + [user_content]
+
         tool_selection_response = llm_client.models.generate_content(
             model=GENERATIVE_MODEL,
-            contents=session.history + [user_content],
+            contents=tool_selection_contents,
             config=types.GenerateContentConfig(
                 temperature=0,
                 tools=[ferre_archive_tool],
@@ -385,6 +414,7 @@ def generate_final_answer(
     sources: List,
     image_context: Optional[str] = None,
     selected_images: Optional[List[Dict[str, str]]] = None,
+    system_instruction: Optional[str] = None,
 ) -> tuple:
     """
     Step 3: Generate the grounded final answer.
@@ -397,25 +427,26 @@ def generate_final_answer(
         tuple: (response_text, sources)
     """
     try:
-        system = SYSTEM_INSTRUCTION
-        if image_context:
-            system = system + "\n\n" + image_context
-
         contents = list(session.history) + [user_content]
-        retrieved_images_content = _build_retrieved_images_content(selected_images)
 
         if tool_call_content is not None:
             contents.extend([tool_call_content, function_responses_content])
-            if retrieved_images_content is not None:
-                contents.append(retrieved_images_content)
-            config = types.GenerateContentConfig(
-                system_instruction=system,
-                tools=[ferre_archive_tool],
-            )
-        else:
-            if retrieved_images_content is not None:
-                contents.append(retrieved_images_content)
-            config = types.GenerateContentConfig(system_instruction=system)
+
+        # Inject image metadata and bytes as a user-turn Content so they are
+        # part of the reasoning context (not the behavioral system instruction)
+        # and can be persisted in history for follow-up turns.
+        if image_context:
+            contents.append(Content(role="user", parts=[Part.from_text(text=image_context)]))
+
+        retrieved_images_content = _build_retrieved_images_content(selected_images)
+        if retrieved_images_content is not None:
+            contents.append(retrieved_images_content)
+
+        system = system_instruction if system_instruction is not None else SYSTEM_INSTRUCTION
+        config = types.GenerateContentConfig(
+            system_instruction=system,
+            tools=[ferre_archive_tool] if tool_call_content is not None else [],
+        )
 
         final_response = llm_client.models.generate_content(
             model=GENERATIVE_MODEL,
@@ -424,11 +455,16 @@ def generate_final_answer(
         )
         final_text = final_response.text
 
-        # Append the full exchange to history
+        # Append the full exchange to history (including image context so
+        # follow-up turns can reference the images from this turn)
         session.history.append(user_content)
         if tool_call_content is not None:
             session.history.append(tool_call_content)
             session.history.append(function_responses_content)
+        if image_context:
+            session.history.append(Content(role="user", parts=[Part.from_text(text=image_context)]))
+        if retrieved_images_content is not None:
+            session.history.append(retrieved_images_content)
         session.history.append(
             Content(role="model", parts=[Part.from_text(text=final_text)])
         )

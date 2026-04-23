@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, Request, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 import chromadb
 from sqlmodel import Session, select
 
@@ -15,7 +16,6 @@ from api.models.fashion_item import FashionItem
 from api.utils.agent_orchestrator import (
     chat_sessions,
     create_chat_session,
-    generate_chat_response,
     rebuild_chat_session,
     generate_image_query_embedding,
     extract_image_filters,
@@ -28,8 +28,14 @@ from api.utils.chat_utils import ChatHistoryManager, ChatMessage
 
 router = APIRouter()
 
+# ── Chat history managers ─────────────────────────────────────────────────────
 chat_manager = ChatHistoryManager(model="llm-agent")
+item_chat_manager = ChatHistoryManager(model="llm-agent-item")
 
+# In-memory session store for item chats (separate from general chat_sessions)
+item_chat_sessions: Dict[str, Any] = {}
+
+# ── Constants ─────────────────────────────────────────────────────────────────
 # Must match the prefix used in source_path (DB and ChromaDB metadata)
 DATASET_PREFIX = "Dataset DataShack 2026/"
 
@@ -43,14 +49,30 @@ TOP_IMAGES_COUNT = 3
 MIN_FILTERED_RESULTS = 5
 
 
+# ── Request models ────────────────────────────────────────────────────────────
+
+class ItemChatMessage(BaseModel):
+    """Request body for starting an item-specific chat."""
+    source_path: str = Field(..., description="source_path of the archive fashion item")
+    content: Optional[str] = Field(None, description="User message text")
+
+
+# ── Image search helpers (general chat) ───────────────────────────────────────
+
+def _build_image_url(request: Request, source_path: str) -> str:
+    relative = source_path.removeprefix(DATASET_PREFIX)
+    return str(request.base_url).rstrip("/") + f"/design-images/{relative}"
+
+
 def _search_similar_images(
     query: str,
     request: Request,
-    count: int = 3,
+    count: int = TOP_IMAGES_COUNT,
     where: Optional[dict] = None,
     where_document: Optional[dict] = None,
-    min_results: int = 3,
+    min_results: int = MIN_FILTERED_RESULTS,
 ) -> List[Dict[str, str]]:
+    """Query ChromaDB for similar images, with fallback to unfiltered results."""
     chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
     collection = chroma_client.get_collection(name="images-fashion-show-photos")
     query_embedding = generate_image_query_embedding(query)
@@ -69,12 +91,13 @@ def _search_similar_images(
         images = []
         if results and results.get("metadatas") and results["metadatas"][0]:
             for metadata in results["metadatas"][0]:
-                image_path = metadata.get("source_path")
-                if not image_path:
+                source_path = metadata.get("source_path")
+                if not source_path:
                     continue
-                relative = image_path.removeprefix(DATASET_PREFIX)
-                image_url = str(request.base_url).rstrip("/") + f"/design-images/{relative}"
-                images.append({"source_path": image_path, "image_url": image_url})
+                images.append({
+                    "source_path": source_path,
+                    "image_url": _build_image_url(request, source_path),
+                })
         return images
 
     images = _run_query(count, where, where_document)
@@ -106,7 +129,7 @@ def _fetch_images_metadata(source_paths: List[str], db: Session) -> Dict[str, An
 
 
 def _score_image(item: Any, text_context: str) -> int:
-    """Score an image by how many of its tags and description match the text context."""
+    """Score an image candidate by tag/description overlap with the text context."""
     text_lower = text_context.lower()
     score = 0
     for tag_list in [
@@ -131,7 +154,7 @@ def _score_image(item: Any, text_context: str) -> int:
 
 
 def _build_image_context(ranked_items: List[Any]) -> str:
-    """Format image metadata as a context string to inject into the final LLM call."""
+    """Serialize top-ranked image metadata as context for the final LLM call."""
     if not ranked_items:
         return ""
     lines = [
@@ -149,6 +172,187 @@ def _build_image_context(ranked_items: List[Any]) -> str:
         lines.append(f"  Description: {desc}")
     return "\n".join(lines)
 
+
+# ── Item chat helpers ─────────────────────────────────────────────────────────
+
+def _build_item_system_instruction(item: FashionItem) -> str:
+    """Build a system instruction scoped to a specific archive fashion item."""
+    tag_fields = [
+        ("garments_tags", "Garments"),
+        ("colors_tags", "Colors"),
+        ("material_tags", "Materials"),
+        ("patterns_tags", "Patterns"),
+        ("silhouette_tags", "Silhouette"),
+        ("style_tags", "Style"),
+        ("embellishment_tags", "Embellishments"),
+        ("length_tags", "Length"),
+        ("neckline_tags", "Neckline"),
+        ("sleeve_tags", "Sleeves"),
+        ("closure_tags", "Closure"),
+    ]
+    tag_lines = []
+    for field, label in tag_fields:
+        values = getattr(item, field) or []
+        if values:
+            tag_lines.append(f"  {label}: {', '.join(values)}")
+
+    # Prefer archival description over LLM-generated one
+    description = item.description or item.llm_description
+
+    metadata_lines = list(filter(None, [
+        f"  Season: {item.season_path}" if item.season_path else None,
+        f"  Year: {item.year_path}" if item.year_path else None,
+        f"  Collection: {item.collection_line}" if item.collection_line else None,
+        f"  Look: {item.look}" if item.look else None,
+        f"  Description: {description}" if description else None,
+        f"  Materials: {item.materials}" if item.materials else None,
+        f"  Working process: {item.working_process}" if item.working_process else None,
+        f"  Acquisition: {item.acquisition}" if item.acquisition else None,
+        f"  Exhibitions: {item.exhibitions}" if item.exhibitions else None,
+        f"  Present location: {item.present_location}" if item.present_location else None,
+        f"  Condition: {item.condition}" if item.condition else None,
+        *tag_lines,
+    ]))
+
+    metadata_block = "\n".join(metadata_lines)
+
+    return (
+        "You are a specialist assistant for a specific Gianfranco Ferré archive item. "
+        "The item's complete metadata is always available as context below.\n\n"
+        f"ITEM METADATA:\n{metadata_block}\n\n"
+        "You may ONLY answer questions that are directly about this specific item. "
+        "Allowed topics: the item's garments, materials, colors, silhouette, embellishments, "
+        "styling possibilities, the collection or season it belongs to, and how the item "
+        "reflects Ferré's approach specifically as expressed through its visible characteristics.\n\n"
+        "You must respond with exactly \"For broader archive questions, please use the general "
+        "Archive Chat.\" — and nothing else — for ANY question that is not strictly about this "
+        "item. This includes, but is not limited to:\n"
+        "- Ferré's general biography, travels, opinions, or personal views\n"
+        "- Ferré's philosophy on topics not directly visible in this item\n"
+        "- Questions about other collections, garments, or seasons not represented by this item\n"
+        "- Historical, cultural, or geographical topics (even if Ferré had known opinions on them)\n\n"
+        "When answering allowed questions:\n"
+        "- Use the retrieved archive text chunks only if they directly illuminate this item.\n"
+        "- Cite text sources with inline citations [1], [2], [3] (maximum 3, most relevant only).\n"
+        "- Do not invent information beyond what is in the provided metadata and retrieved context."
+    )
+
+
+def _build_item_retrieval_hint(item: FashionItem) -> str:
+    """Build a hint to steer RAG tool selection towards the item's context.
+
+    Prepended to the user message only during Step 1 (tool selection) so Gemini
+    generates a richer search_content. Not stored in conversation history.
+    """
+    all_tags: List[str] = []
+    for field in ["garments_tags", "colors_tags", "material_tags",
+                  "patterns_tags", "style_tags", "embellishment_tags"]:
+        all_tags.extend(getattr(item, field) or [])
+
+    parts = [
+        f"Item context: {item.season_path or ''} {item.year_path or ''}".strip()
+    ]
+    if all_tags:
+        parts.append(f"Tags: {', '.join(all_tags[:15])}")
+    if item.llm_description:
+        parts.append(f"Description: {item.llm_description}")
+
+    return " | ".join(parts)
+
+
+# ── Shared pipeline logic ─────────────────────────────────────────────────────
+
+def _run_general_chat_pipeline(
+    chat_session: Any,
+    message_dict: dict,
+    request: Request,
+    db: Session,
+) -> tuple:
+    """Execute Steps 1–6 of the general chat pipeline.
+
+    Returns:
+        (assistant_text, response_sources, top_images)
+    """
+    # Step 1+2: Tool selection + ChromaDB text retrieval
+    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
+        chat_session, message_dict
+    )
+
+    # Step 3: Extract visual filters + ChromaDB image search
+    raw_query = message_dict.get("content", "")
+    refined_query, image_where, image_where_document = extract_image_filters(raw_query)
+    image_candidates = _search_similar_images(
+        refined_query, request, count=IMAGE_CANDIDATES_COUNT,
+        where=image_where, where_document=image_where_document,
+        min_results=MIN_FILTERED_RESULTS,
+    )
+
+    # Step 4: Fetch Postgres metadata for candidates
+    candidate_paths = [img["source_path"] for img in image_candidates]
+    metadata_map = _fetch_images_metadata(candidate_paths, db)
+
+    # Step 5: Re-rank by tag/description overlap with retrieved text context
+    text_context = raw_query + " " + " ".join(s.get("excerpt", "") for s in sources)
+    ranked_items = sorted(
+        metadata_map.values(),
+        key=lambda item: _score_image(item, text_context),
+        reverse=True,
+    )[:TOP_IMAGES_COUNT]
+
+    ranked_paths = {item.source_path for item in ranked_items}
+    top_images = [img for img in image_candidates if img["source_path"] in ranked_paths]
+    if not top_images:
+        top_images = image_candidates[:TOP_IMAGES_COUNT]
+
+    # Step 6: Generate final answer with text + image context
+    image_context = _build_image_context(ranked_items) if ranked_items else None
+    assistant_text, response_sources = generate_final_answer(
+        chat_session, user_content, tool_call_content, function_responses_content,
+        sources, image_context=image_context, selected_images=top_images,
+    )
+
+    return assistant_text, response_sources, top_images
+
+
+def _run_item_chat_pipeline(
+    chat_session: Any,
+    message_dict: dict,
+    item: FashionItem,
+    item_system_instruction: str,
+) -> tuple:
+    """Execute the RAG pipeline for item-specific chat.
+
+    Differences from general chat:
+    - retrieval_hint enriches tool selection with item metadata (Option A)
+    - No ChromaDB image search — uses the item's own image
+    - item_system_instruction scopes responses to the item
+
+    Returns:
+        (assistant_text, response_sources)
+    """
+    retrieval_hint = _build_item_retrieval_hint(item)
+
+    # Step 1+2: Tool selection (enriched with item context) + ChromaDB text retrieval
+    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
+        chat_session, message_dict, retrieval_hint=retrieval_hint,
+    )
+
+    # Step 3 (item chat): Always pass the item's own image for multimodal context
+    selected_images = [{"source_path": item.source_path}]
+
+    # Step 4: Generate final answer scoped to the item
+    assistant_text, response_sources = generate_final_answer(
+        chat_session, user_content, tool_call_content, function_responses_content,
+        sources,
+        image_context=None,              # item metadata already in system instruction
+        selected_images=selected_images,
+        system_instruction=item_system_instruction,
+    )
+
+    return assistant_text, response_sources
+
+
+# ── General chat routes ───────────────────────────────────────────────────────
 
 @router.get("/chats")
 async def get_chats(
@@ -183,69 +387,29 @@ async def start_chat_with_llm(
     if not x_session_id:
         x_session_id = "default-session"
 
-    message_dict = message.model_dump()
     chat_id = str(uuid.uuid4())
     current_time = int(time.time())
 
     chat_session = create_chat_session()
     chat_sessions[chat_id] = chat_session
 
-    message_dict["message_id"] = str(uuid.uuid4())
-    message_dict["role"] = "user"
+    message_dict = {
+        **message.model_dump(),
+        "message_id": str(uuid.uuid4()),
+        "role": "user",
+    }
 
-    # Step 1+2: Tool selection + ChromaDB text chunk retrieval (parallel with image filters)
-    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
-        chat_session, message_dict
+    assistant_text, response_sources, top_images = _run_general_chat_pipeline(
+        chat_session, message_dict, request, db
     )
 
-    # Step 3: Extract visual filters from query, then run image similarity search
-    raw_query = message_dict.get("content", "")
-    refined_query, image_where, image_where_document = extract_image_filters(raw_query)
-    image_candidates = _search_similar_images(
-        refined_query, request, count=IMAGE_CANDIDATES_COUNT,
-        where=image_where, where_document=image_where_document,
-        min_results=MIN_FILTERED_RESULTS,
-    )
-
-    # Step 4: Fetch Postgres metadata for all image candidates
-    candidate_paths = [img["source_path"] for img in image_candidates]
-    metadata_map = _fetch_images_metadata(candidate_paths, db)
-
-    # Step 5: Re-rank images by tag/description overlap with retrieved text context
-    text_context = (
-        raw_query + " "
-        + " ".join(s.get("excerpt", "") for s in sources)
-    )
-    ranked_items = sorted(
-        metadata_map.values(),
-        key=lambda item: _score_image(item, text_context),
-        reverse=True,
-    )[:TOP_IMAGES_COUNT]
-
-    ranked_paths = {item.source_path for item in ranked_items}
-    top_images = [img for img in image_candidates if img["source_path"] in ranked_paths]
-    if not top_images:
-        top_images = image_candidates[:TOP_IMAGES_COUNT]
-
-    # Step 6: Generate final answer with text chunks + image metadata context
-    image_context = _build_image_context(ranked_items) if ranked_items else None
-    assistant_response_text, response_sources = generate_final_answer(
-        chat_session, user_content, tool_call_content, function_responses_content,
-        sources, image_context, top_images
-    )
-
-    title = (message_dict.get("content") or "Image chat")[:50] + "..."
     chat_response = {
         "chat_id": chat_id,
-        "title": title,
+        "title": (message_dict.get("content") or "Chat")[:50] + "...",
         "dts": current_time,
         "messages": [
             message_dict,
-            {
-                "message_id": str(uuid.uuid4()),
-                "role": "assistant",
-                "content": assistant_response_text,
-            },
+            {"message_id": str(uuid.uuid4()), "role": "assistant", "content": assistant_text},
         ],
         "images": top_images,
         "sources": response_sources,
@@ -266,7 +430,6 @@ async def continue_chat_with_llm(
     if not x_session_id:
         x_session_id = "default-session"
 
-    message_dict = message.model_dump()
     chat = chat_manager.get_chat(chat_id, x_session_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -276,56 +439,20 @@ async def continue_chat_with_llm(
         chat_session = rebuild_chat_session(chat["messages"], history_dir=chat_manager.history_dir)
         chat_sessions[chat_id] = chat_session
 
-    message_dict["message_id"] = str(uuid.uuid4())
-    message_dict["role"] = "user"
+    message_dict = {
+        **message.model_dump(),
+        "message_id": str(uuid.uuid4()),
+        "role": "user",
+    }
 
-    # Step 1+2: Tool selection + ChromaDB text chunk retrieval
-    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
-        chat_session, message_dict
-    )
-
-    # Step 3: Extract visual filters from query, then run image similarity search
-    raw_query = message_dict.get("content", "")
-    refined_query, image_where, image_where_document = extract_image_filters(raw_query)
-    image_candidates = _search_similar_images(
-        refined_query, request, count=IMAGE_CANDIDATES_COUNT,
-        where=image_where, where_document=image_where_document,
-        min_results=MIN_FILTERED_RESULTS,
-    )
-
-    # Step 4: Fetch Postgres metadata for all image candidates
-    candidate_paths = [img["source_path"] for img in image_candidates]
-    metadata_map = _fetch_images_metadata(candidate_paths, db)
-
-    # Step 5: Re-rank images by tag/description overlap with retrieved text context
-    text_context = (
-        raw_query + " "
-        + " ".join(s.get("excerpt", "") for s in sources)
-    )
-    ranked_items = sorted(
-        metadata_map.values(),
-        key=lambda item: _score_image(item, text_context),
-        reverse=True,
-    )[:TOP_IMAGES_COUNT]
-
-    ranked_paths = {item.source_path for item in ranked_items}
-    top_images = [img for img in image_candidates if img["source_path"] in ranked_paths]
-    if not top_images:
-        top_images = image_candidates[:TOP_IMAGES_COUNT]
-
-    # Step 6: Generate final answer with text chunks + image metadata context
-    image_context = _build_image_context(ranked_items) if ranked_items else None
-    assistant_response_text, response_sources = generate_final_answer(
-        chat_session, user_content, tool_call_content, function_responses_content,
-        sources, image_context, top_images
+    assistant_text, response_sources, top_images = _run_general_chat_pipeline(
+        chat_session, message_dict, request, db
     )
 
     chat["dts"] = int(time.time())
     chat["messages"].append(message_dict)
     chat["messages"].append({
-        "message_id": str(uuid.uuid4()),
-        "role": "assistant",
-        "content": assistant_response_text,
+        "message_id": str(uuid.uuid4()), "role": "assistant", "content": assistant_text,
     })
     chat["images"] = top_images
     chat["sources"] = response_sources
@@ -333,6 +460,123 @@ async def continue_chat_with_llm(
     chat_manager.save_chat(chat, x_session_id)
     return chat
 
+
+# ── Item chat routes ──────────────────────────────────────────────────────────
+
+@router.post("/item-chats")
+async def start_item_chat(
+    request: Request,
+    message: ItemChatMessage,
+    x_session_id: str = Header(None, alias="X-Session-ID"),
+    db: Session = Depends(get_session),
+):
+    if not x_session_id:
+        x_session_id = "default-session"
+
+    item = db.exec(
+        select(FashionItem).where(FashionItem.source_path == message.source_path)
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Item not found: {message.source_path}")
+
+    chat_id = str(uuid.uuid4())
+    current_time = int(time.time())
+
+    chat_session = create_chat_session()
+    item_chat_sessions[chat_id] = chat_session
+
+    message_dict = {
+        "message_id": str(uuid.uuid4()),
+        "role": "user",
+        "content": message.content,
+        "image": None,
+    }
+
+    item_system_instruction = _build_item_system_instruction(item)
+    item_image = {
+        "source_path": item.source_path,
+        "image_url": _build_image_url(request, item.source_path),
+    }
+
+    assistant_text, response_sources = _run_item_chat_pipeline(
+        chat_session, message_dict, item, item_system_instruction,
+    )
+
+    chat_response = {
+        "chat_id": chat_id,
+        "item_source_path": item.source_path,
+        "title": (message.content or "Item chat")[:50] + "...",
+        "dts": current_time,
+        "messages": [
+            message_dict,
+            {"message_id": str(uuid.uuid4()), "role": "assistant", "content": assistant_text},
+        ],
+        "images": [item_image],
+        "sources": response_sources,
+    }
+
+    item_chat_manager.save_chat(chat_response, x_session_id)
+    return chat_response
+
+
+@router.post("/item-chats/{chat_id}")
+async def continue_item_chat(
+    request: Request,
+    chat_id: str,
+    message: ChatMessage,
+    x_session_id: str = Header(None, alias="X-Session-ID"),
+    db: Session = Depends(get_session),
+):
+    if not x_session_id:
+        x_session_id = "default-session"
+
+    chat = item_chat_manager.get_chat(chat_id, x_session_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Item chat not found")
+
+    source_path = chat.get("item_source_path")
+    item = db.exec(
+        select(FashionItem).where(FashionItem.source_path == source_path)
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Item not found: {source_path}")
+
+    chat_session = item_chat_sessions.get(chat_id)
+    if not chat_session:
+        chat_session = rebuild_chat_session(
+            chat["messages"], history_dir=item_chat_manager.history_dir
+        )
+        item_chat_sessions[chat_id] = chat_session
+
+    message_dict = {
+        **message.model_dump(),
+        "message_id": str(uuid.uuid4()),
+        "role": "user",
+    }
+
+    item_system_instruction = _build_item_system_instruction(item)
+    item_image = {
+        "source_path": item.source_path,
+        "image_url": _build_image_url(request, item.source_path),
+    }
+
+    assistant_text, response_sources = _run_item_chat_pipeline(
+        chat_session, message_dict, item, item_system_instruction,
+    )
+
+    chat["dts"] = int(time.time())
+    chat["messages"].append(message_dict)
+    chat["messages"].append({
+        "message_id": str(uuid.uuid4()), "role": "assistant", "content": assistant_text,
+    })
+    chat["images"] = [item_image]
+    chat["sources"] = response_sources
+
+    item_chat_manager.save_chat(chat, x_session_id)
+    return chat
+
+
+# ── Chat image serving ────────────────────────────────────────────────────────
 
 @router.get("/images/{chat_id}/{message_id}.png")
 async def get_chat_image(chat_id: str, message_id: str):
