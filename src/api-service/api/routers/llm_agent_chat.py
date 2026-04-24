@@ -19,6 +19,7 @@ from api.utils.agent_orchestrator import (
     rebuild_chat_session,
     generate_image_query_embedding,
     extract_image_filters,
+    get_image_embedding_from_chroma,
     retrieve_text_chunks,
     generate_final_answer,
     CHROMADB_HOST,
@@ -71,11 +72,17 @@ def _search_similar_images(
     where: Optional[dict] = None,
     where_document: Optional[dict] = None,
     min_results: int = MIN_FILTERED_RESULTS,
+    query_embedding: Optional[List[float]] = None,
 ) -> List[Dict[str, str]]:
-    """Query ChromaDB for similar images, with fallback to unfiltered results."""
+    """Query ChromaDB for similar images, with fallback to unfiltered results.
+
+    If query_embedding is provided (e.g. retrieved from a shown image), it is used
+    directly instead of generating a new text-based embedding from query.
+    """
     chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
     collection = chroma_client.get_collection(name="images-fashion-show-photos")
-    query_embedding = generate_image_query_embedding(query)
+    if query_embedding is None:
+        query_embedding = generate_image_query_embedding(query)
 
     def _run_query(
         n_results: int,
@@ -218,8 +225,12 @@ def _build_item_system_instruction(item: FashionItem) -> str:
 
     return (
         "You are a specialist assistant for a specific Gianfranco Ferré archive item. "
-        "The item's complete metadata is always available as context below.\n\n"
+        "The item's complete metadata is provided below — treat these values as direct facts, "
+        "never write '[see item metadata]' or similar placeholders; always use the actual values inline.\n\n"
         f"ITEM METADATA:\n{metadata_block}\n\n"
+        "If the user sends a greeting or a generic opener (e.g. 'hello', 'hi', 'ciao'), "
+        "respond with a brief, welcoming sentence and invite them to ask anything about this specific item "
+        "(its design, materials, silhouette, season, styling, etc.). Do not immediately describe the item unprompted.\n\n"
         "You may ONLY answer questions that are directly about this specific item. "
         "Allowed topics: the item's garments, materials, colors, silhouette, embellishments, "
         "styling possibilities, the collection or season it belongs to, and how the item "
@@ -232,7 +243,8 @@ def _build_item_system_instruction(item: FashionItem) -> str:
         "- Questions about other collections, garments, or seasons not represented by this item\n"
         "- Historical, cultural, or geographical topics (even if Ferré had known opinions on them)\n\n"
         "When answering allowed questions:\n"
-        "- Use the retrieved archive text chunks only if they directly illuminate this item.\n"
+        "- Use the actual metadata values directly — never cite them as '[see item metadata]'.\n"
+        "- Use retrieved archive text chunks only if they directly illuminate this item.\n"
         "- Cite text sources with inline citations [1], [2], [3] (maximum 3, most relevant only).\n"
         "- Do not invent information beyond what is in the provided metadata and retrieved context."
     )
@@ -267,8 +279,14 @@ def _run_general_chat_pipeline(
     message_dict: dict,
     request: Request,
     db: Session,
+    current_images: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple:
     """Execute Steps 1–6 of the general chat pipeline.
+
+    Args:
+        current_images: Images shown to the user in the previous response (if any).
+            Used to resolve reference_image_index when the user asks for visually
+            similar results to a specific shown image.
 
     Returns:
         (assistant_text, response_sources, top_images)
@@ -280,11 +298,87 @@ def _run_general_chat_pipeline(
 
     # Step 3: Extract visual filters + ChromaDB image search
     raw_query = message_dict.get("content", "")
-    refined_query, image_where, image_where_document = extract_image_filters(raw_query)
+    refined_query, image_where, image_where_document, ref_image_index, filter_attributes = extract_image_filters(raw_query)
+
+    # If the user referred to a specific shown image, resolve its data from ChromaDB/Postgres.
+    visual_embedding: Optional[List[float]] = None
+    if ref_image_index is not None and current_images:
+        idx = ref_image_index - 1  # convert 1-based to 0-based
+        if 0 <= idx < len(current_images):
+            ref_source_path = current_images[idx].get("source_path")
+            if ref_source_path:
+                # Visual embedding — use for visual/tag-based similarity queries.
+                # Skip only when filter_attributes contains exclusively scalar filters
+                # (season, year), where the metadata filter alone is sufficient and
+                # the visual embedding would undesirably bias towards the referenced image.
+                _SCALAR_ONLY_ATTRS = {"season", "year"}
+                use_visual = not filter_attributes or bool(
+                    set(filter_attributes) - _SCALAR_ONLY_ATTRS
+                )
+                if use_visual:
+                    visual_embedding = get_image_embedding_from_chroma(ref_source_path)
+                    if visual_embedding:
+                        print(f"Using visual embedding of shown image {ref_image_index} ({ref_source_path})")
+                    else:
+                        print(f"Visual embedding not found for image {ref_image_index}, falling back to text query")
+
+                # Metadata/tag filters from the referenced image
+                if filter_attributes:
+                    ref_item = db.exec(
+                        select(FashionItem).where(FashionItem.source_path == ref_source_path)
+                    ).first()
+                    if ref_item:
+                        # Scalar metadata → ChromaDB `where` filter
+                        extra_where = []
+                        if "season" in filter_attributes and ref_item.season_path:
+                            extra_where.append({"season_path": ref_item.season_path})
+                        if "year" in filter_attributes and ref_item.year_path:
+                            extra_where.append({"year_path": ref_item.year_path})
+
+                        if extra_where:
+                            if image_where:
+                                existing = (
+                                    image_where["$and"]
+                                    if "$and" in image_where
+                                    else [image_where]
+                                )
+                                image_where = {"$and": extra_where + existing}
+                            elif len(extra_where) == 1:
+                                image_where = extra_where[0]
+                            else:
+                                image_where = {"$and": extra_where}
+                            print(f"Scalar filters from image {ref_image_index}: {image_where}")
+
+                        # Tag-based → ChromaDB `where_document` ($contains on first tag)
+                        extra_doc = []
+                        tag_map = [
+                            ("color",    ref_item.colors_tags),
+                            ("material", ref_item.material_tags),
+                            ("garment",  ref_item.garments_tags),
+                        ]
+                        for attr, tag_list in tag_map:
+                            if attr in filter_attributes and tag_list:
+                                extra_doc.append({"$contains": tag_list[0]})
+
+                        if extra_doc:
+                            if image_where_document:
+                                existing_doc = (
+                                    image_where_document["$and"]
+                                    if "$and" in image_where_document
+                                    else [image_where_document]
+                                )
+                                image_where_document = {"$and": extra_doc + existing_doc}
+                            elif len(extra_doc) == 1:
+                                image_where_document = extra_doc[0]
+                            else:
+                                image_where_document = {"$and": extra_doc}
+                            print(f"Tag filters from image {ref_image_index}: {image_where_document}")
+
     image_candidates = _search_similar_images(
         refined_query, request, count=IMAGE_CANDIDATES_COUNT,
         where=image_where, where_document=image_where_document,
         min_results=MIN_FILTERED_RESULTS,
+        query_embedding=visual_embedding,
     )
 
     # Step 4: Fetch Postgres metadata for candidates
@@ -299,8 +393,14 @@ def _run_general_chat_pipeline(
         reverse=True,
     )[:TOP_IMAGES_COUNT]
 
-    ranked_paths = {item.source_path for item in ranked_items}
-    top_images = [img for img in image_candidates if img["source_path"] in ranked_paths]
+    # Build top_images in the same order as ranked_items so that Image 1/2/3 in the
+    # LLM context matches the left-to-right order shown in the frontend.
+    candidate_url_map = {img["source_path"]: img for img in image_candidates}
+    top_images = [
+        candidate_url_map[item.source_path]
+        for item in ranked_items
+        if item.source_path in candidate_url_map
+    ]
     if not top_images:
         top_images = image_candidates[:TOP_IMAGES_COUNT]
 
@@ -446,7 +546,8 @@ async def continue_chat_with_llm(
     }
 
     assistant_text, response_sources, top_images = _run_general_chat_pipeline(
-        chat_session, message_dict, request, db
+        chat_session, message_dict, request, db,
+        current_images=chat.get("images"),
     )
 
     chat["dts"] = int(time.time())

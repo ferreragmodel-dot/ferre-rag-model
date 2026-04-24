@@ -90,6 +90,34 @@ image_search_func = types.FunctionDeclaration(
                 "items": {"type": "string"},
                 "description": "Overall style (e.g. 'formal', 'casual', 'dress clothes').",
             },
+            "reference_image_index": {
+                "type": "integer",
+                "description": (
+                    "Set to 1, 2, or 3 when the user explicitly refers to one of the currently "
+                    "shown images as the visual similarity anchor "
+                    "(e.g. 'more like image 2', 'similar to the second image', 'find more like that one'). "
+                    "When set, the visual embedding of that image is used instead of a text query. "
+                    "Do NOT set this for general queries that don't reference a specific shown image."
+                ),
+            },
+            "filter_attributes": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["season", "year", "color", "material", "garment"],
+                },
+                "description": (
+                    "Only used together with reference_image_index. "
+                    "List the attributes from the referenced image to use as hard filters. "
+                    "'season' — same seasonal collection (FW1988-1989, SS1987, etc.): "
+                    "'same collection as image 3', 'same season as image 1', 'other looks from that show'. "
+                    "'year' — same year: 'same year as image 2', 'other pieces from that year'. "
+                    "'color' — same dominant color: 'same color as image 1', 'other black pieces'. "
+                    "'material' — same dominant material: 'same fabric as image 2', 'other silk pieces'. "
+                    "'garment' — same garment type: 'more jackets like image 3', 'other dresses like that'. "
+                    "For general visual similarity without specific attributes, leave this empty."
+                ),
+            },
         },
         "required": ["search_query"],
     },

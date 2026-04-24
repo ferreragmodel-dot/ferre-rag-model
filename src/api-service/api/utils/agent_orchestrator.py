@@ -62,6 +62,16 @@ When the user asks for more details, background, or specific information about o
 "For more details about this piece, click on Image N to open its dedicated archive page and start a conversation directly about it."
 Do not attempt to answer detail questions about specific shown images beyond what is already visible in the image context provided.
 
+The labels Image 1, Image 2, Image 3 always refer to the three images shown in the most recent response. If the user refers to images from a previous response or an earlier round (e.g. "the first image from two rounds ago", "the second image you showed before", "the image before that", "the ones from earlier"):
+- Do NOT perform any image search.
+- Do NOT call any tool.
+- Respond only with: "I can only reference the images from the most recent response. Please refer to Image 1, 2, or 3 from the last set shown."
+
+If the user references more than one shown image at once for any kind of search or filtering — including visual similarity, color, material, garment, season, or any other attribute — (e.g. "similar to image 1 and image 2", "same color as the first and second one", "like image 1 but also image 3", "images with the colors of both image 1 and image 2"):
+- Do NOT perform any image search.
+- Do NOT call any tool.
+- Respond only with: "I can only use one image as a reference at a time. Which one would you like me to use — Image 1, 2, or 3?"
+
 Remember:
 - Do not invent information or draw from knowledge outside of the provided context.
 - If asked about topics unrelated to Ferré or fashion, politely redirect the conversation.
@@ -285,14 +295,17 @@ def _build_chroma_filters(args: dict) -> tuple[Optional[dict], Optional[dict]]:
     return where, where_document
 
 
-def extract_image_filters(query: str) -> tuple[str, Optional[dict], Optional[dict]]:
+def extract_image_filters(query: str) -> tuple[str, Optional[dict], Optional[dict], Optional[int], list]:
     """Use Gemini to extract visual filters from a free-text query.
 
     Returns:
-        (refined_search_query, where, where_document)
-        where       — ChromaDB metadata filter (season_path, year_path)
-        where_document — ChromaDB document filter (tag values via $contains)
-        Both are None when no filters of that type were identified.
+        (refined_search_query, where, where_document, reference_image_index, filter_attributes)
+        where                — ChromaDB metadata filter (season_path, year_path)
+        where_document       — ChromaDB document filter (tag values via $contains)
+        reference_image_index — 1/2/3 if the user referred to a specific shown image, else None
+        filter_attributes    — list of attribute names (e.g. ["collection", "year"]) to filter
+                               by from the referenced image's metadata; empty list if not applicable
+        where and where_document are None when no filters of that type were identified.
     """
     try:
         response = llm_client.models.generate_content(
@@ -312,17 +325,49 @@ def extract_image_filters(query: str) -> tuple[str, Optional[dict], Optional[dic
             if part.function_call
         ]
         if not function_calls:
-            return query, None, None
+            return query, None, None, None, []
 
         args = dict(function_calls[0].args)
         refined_query = args.get("search_query") or query
         where, where_document = _build_chroma_filters(args)
-        print(f"Image filters — query: '{refined_query}', where: {where}, where_document: {where_document}")
-        return refined_query, where, where_document
+
+        raw_ref = args.get("reference_image_index")
+        reference_image_index = int(raw_ref) if raw_ref is not None else None
+
+        raw_attrs = args.get("filter_attributes") or []
+        filter_attributes = [str(a) for a in raw_attrs] if raw_attrs else []
+
+        print(
+            f"Image filters — query: '{refined_query}', where: {where}, "
+            f"where_document: {where_document}, ref_image: {reference_image_index}, "
+            f"filter_attrs: {filter_attributes}"
+        )
+        return refined_query, where, where_document, reference_image_index, filter_attributes
 
     except Exception as e:
         print(f"extract_image_filters failed, falling back to plain query: {e}")
-        return query, None, None
+        return query, None, None, None, []
+
+
+def get_image_embedding_from_chroma(source_path: str) -> Optional[List[float]]:
+    """Retrieve the stored multimodal embedding for an image from ChromaDB.
+
+    Used when the user refers to a specific shown image for visual similarity search,
+    so we can use its embedding directly instead of generating a text-based one.
+    """
+    try:
+        client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+        collection = client.get_collection(name="images-fashion-show-photos")
+        results = collection.get(
+            where={"source_path": source_path},
+            include=["embeddings"],
+        )
+        embeddings = results.get("embeddings")
+        if embeddings is not None and len(embeddings) > 0:
+            return list(embeddings[0])
+    except Exception as e:
+        print(f"get_image_embedding_from_chroma failed for '{source_path}': {e}")
+    return None
 
 
 def retrieve_text_chunks(
@@ -455,19 +500,25 @@ def generate_final_answer(
         )
         final_text = final_response.text
 
-        # Append the full exchange to history (including image context so
-        # follow-up turns can reference the images from this turn)
+        # Append the exchange to history.
+        # Image bytes (retrieved_images_content) are intentionally NOT stored —
+        # they are large and not needed in past turns. The text image_context is
+        # sufficient for follow-up questions about previously shown images.
+        # A sliding window caps history at ~10 turns to bound memory usage.
         session.history.append(user_content)
         if tool_call_content is not None:
             session.history.append(tool_call_content)
             session.history.append(function_responses_content)
         if image_context:
             session.history.append(Content(role="user", parts=[Part.from_text(text=image_context)]))
-        if retrieved_images_content is not None:
-            session.history.append(retrieved_images_content)
         session.history.append(
             Content(role="model", parts=[Part.from_text(text=final_text)])
         )
+
+        # Sliding window: keep at most 50 Content items (~10 turns at ~5 items/turn)
+        MAX_HISTORY_ITEMS = 50
+        if len(session.history) > MAX_HISTORY_ITEMS:
+            session.history = session.history[-MAX_HISTORY_ITEMS:]
 
         return final_text, sources
 
