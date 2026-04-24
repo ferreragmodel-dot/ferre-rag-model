@@ -128,7 +128,7 @@ image_search_tool = types.Tool(function_declarations=[image_search_func])
 # ── Text archive constants ─────────────────────────────────────────────────────
 # All documents available in the archive (filename without .pdf extension).
 # These match the 'doc' metadata field stored in ChromaDB.
-ARCHIVE_YEARS = ["1973", "1996", "1997", "1998", "1999", "2000", "2001", "2003", "2005", "2006", "2007", "2023"]
+ARCHIVE_YEARS = ["1973", "1986", "1987", "1988", "1989", "1996", "1997", "1998", "1999", "2000", "2001", "2003", "2005", "2006", "2007", "2023"]
 
 ARCHIVE_DOCUMENTS = [
     "Archivio Fondazione Ferre (Server)",
@@ -170,6 +170,13 @@ ARCHIVE_DOCUMENTS = [
     "Notes_Sizes+",
     "Notes_Values",
     "Notes_White shirt",
+    # Season press releases (Alta Moda collections 1986-1989)
+    "Press_Release_FW1986-1987",
+    "Press_Release_FW1987-1988",
+    "Press_Release_FW1988-1989",
+    "Press_Release_SS1987",
+    "Press_Release_SS1988",
+    "Press_Release_SS1989",
 ]
 
 # Tool 1: General semantic search across the full archive
@@ -202,7 +209,11 @@ search_by_document_func = types.FunctionDeclaration(
     description=(
         "Search within a specific document from the Gianfranco Ferre archive. "
         "Use when the query explicitly refers to a known document, lesson, or topic area "
-        "(e.g. India travel notes, white shirt essay, jewelry lesson, Dior notes)."
+        "(e.g. India travel notes, white shirt essay, jewelry lesson, Dior notes). "
+        "Also use for queries about a specific collection season: "
+        "season names map directly to press release documents — "
+        "e.g. 'FW1987-1988 collection' → doc='Press_Release_FW1987-1988', "
+        "'SS1988 show' → doc='Press_Release_SS1988'."
     ),
     parameters={
         "type": "object",

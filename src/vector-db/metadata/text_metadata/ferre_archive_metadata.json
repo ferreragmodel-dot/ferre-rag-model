@@ -272,5 +272,53 @@
     ],
     "author": "Gianfranco Ferre (Fondazione Gianfranco Ferre)",
     "type": "Other"
+  },
+  "Press_Release_FW1986-1987.pdf": {
+    "title": "Press Release - Fall/Winter 1986-1987 Alta Moda Collection",
+    "year": "1986",
+    "season": "FW1986-1987",
+    "main_topics": "Alta Moda, haute couture, Fall Winter collection, garments, fabrics, silhouettes, fashion show",
+    "author": "Gianfranco Ferre",
+    "type": "press_release"
+  },
+  "Press_Release_FW1987-1988.pdf": {
+    "title": "Press Release - Fall/Winter 1987-1988 Alta Moda Collection",
+    "year": "1987",
+    "season": "FW1987-1988",
+    "main_topics": "Alta Moda, haute couture, Fall Winter collection, garments, fabrics, silhouettes, fashion show",
+    "author": "Gianfranco Ferre",
+    "type": "press_release"
+  },
+  "Press_Release_FW1988-1989.pdf": {
+    "title": "Press Release - Fall/Winter 1988-1989 Alta Moda Collection",
+    "year": "1988",
+    "season": "FW1988-1989",
+    "main_topics": "Alta Moda, haute couture, Fall Winter collection, garments, fabrics, silhouettes, fashion show",
+    "author": "Gianfranco Ferre",
+    "type": "press_release"
+  },
+  "Press_Release_SS1987.pdf": {
+    "title": "Press Release - Spring/Summer 1987 Alta Moda Collection",
+    "year": "1987",
+    "season": "SS1987",
+    "main_topics": "Alta Moda, haute couture, Spring Summer collection, garments, fabrics, silhouettes, fashion show",
+    "author": "Gianfranco Ferre",
+    "type": "press_release"
+  },
+  "Press_Release_SS1988.pdf": {
+    "title": "Press Release - Spring/Summer 1988 Alta Moda Collection",
+    "year": "1988",
+    "season": "SS1988",
+    "main_topics": "Alta Moda, haute couture, Spring Summer collection, garments, fabrics, silhouettes, fashion show",
+    "author": "Gianfranco Ferre",
+    "type": "press_release"
+  },
+  "Press_Release_SS1989.pdf": {
+    "title": "Press Release - Spring/Summer 1989 Alta Moda Collection",
+    "year": "1989",
+    "season": "SS1989",
+    "main_topics": "Alta Moda, haute couture, Spring Summer collection, garments, fabrics, silhouettes, fashion show",
+    "author": "Gianfranco Ferre",
+    "type": "press_release"
   }
 }

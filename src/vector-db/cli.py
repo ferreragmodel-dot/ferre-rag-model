@@ -277,20 +277,32 @@ def retrieve_chunks(collection, query_embedding, top_k=10, filters=None, contain
 
 
 
-def chunk(method="recursive-split", source="pdf"):
+def chunk(method="recursive-split", source="pdf", skip_existing=False):
     print("chunk()")
 
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
     if source == "pdf":
-        pdf_dir = os.path.join(INPUT_FOLDER, "ferre-notes-lessons")
-        pdf_files = glob.glob(os.path.join(pdf_dir, "*.pdf"))
+        pdf_dirs = [
+            os.path.join(INPUT_FOLDER, "ferre-notes-lessons"),
+            os.path.join(INPUT_FOLDER, "ferre-press-releases"),
+        ]
+        pdf_files = []
+        for pdf_dir in pdf_dirs:
+            if os.path.isdir(pdf_dir):
+                pdf_files.extend(glob.glob(os.path.join(pdf_dir, "*.pdf")))
         print("Number of PDFs to process:", len(pdf_files))
 
         for pdf_file in pdf_files:
-            print("Processing PDF:", pdf_file)
             filename = os.path.basename(pdf_file)
             doc_name = os.path.splitext(filename)[0]
+            jsonl_filename = os.path.join(OUTPUT_FOLDER, f"chunks-{method}-{doc_name}.jsonl")
+
+            if skip_existing and os.path.exists(jsonl_filename):
+                print(f"Skipping (already chunked): {filename}")
+                continue
+
+            print("Processing PDF:", pdf_file)
 
             try:
                 doc = fitz.open(pdf_file)
@@ -378,7 +390,7 @@ def chunk(method="recursive-split", source="pdf"):
                     json_file.write(data_df.to_json(orient='records', lines=True))
 
 
-def embed(method="recursive-split"):
+def embed(method="recursive-split", skip_existing=False):
     print("embed()")
 
     # Get the list of chunk files
@@ -388,6 +400,11 @@ def embed(method="recursive-split"):
 
     # Process
     for jsonl_file in jsonl_files:
+        embeddings_filename = jsonl_file.replace("chunks-", "embeddings-")
+        if skip_existing and os.path.exists(embeddings_filename):
+            print(f"Skipping (already embedded): {os.path.basename(jsonl_file)}")
+            continue
+
         print("Processing file:", jsonl_file)
 
         data_df = pd.read_json(jsonl_file, lines=True)
@@ -989,10 +1006,10 @@ def main(args=None):
     print("CLI Arguments:", args)
 
     if args.chunk:
-        chunk(method=args.chunk_type)
+        chunk(method=args.chunk_type, skip_existing=args.skip_existing)
 
     if args.embed:
-        embed(method=args.chunk_type)
+        embed(method=args.chunk_type, skip_existing=args.skip_existing)
 
     if args.embed_fashion_show_photos:
         embed_fashion_show_photos()
@@ -1075,6 +1092,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--chunk_type", default="semantic-split",
                         help="char-split | recursive-split | semantic-split")
+
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip PDFs/chunks whose output file already exists (incremental processing)",
+    )
     
     # add new argparse options for metadata filtering
     parser.add_argument("--q", type=str, default=None, 

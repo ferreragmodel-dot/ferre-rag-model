@@ -491,6 +491,9 @@ def generate_final_answer(
         config = types.GenerateContentConfig(
             system_instruction=system,
             tools=[ferre_archive_tool] if tool_call_content is not None else [],
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(mode="none")
+            ) if tool_call_content is not None else None,
         )
 
         final_response = llm_client.models.generate_content(
