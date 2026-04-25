@@ -22,7 +22,7 @@ export default function HomePage() {
   };
 
   return (
-    <main>
+    <main className="pt-14">
       <TitleBar />
       <SearchBar onSubmit={handleConversationSubmit} />
       <ImageGrid />

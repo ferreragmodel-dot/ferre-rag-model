@@ -3,16 +3,18 @@
 import { useState, useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import Image from "next/image";
-import { Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Input } from "@/components/ui/input";
 import {
   fetchArchiveItemDetail,
+  fetchItemCluster,
   startItemChat,
   continueItemChat,
   ChatMessage as APIChatMessage,
   ChatSource,
+  ClusterItem,
 } from "@/lib/api";
 import { ArchiveItemDetailResponse } from "@/lib/types";
 
@@ -65,6 +67,13 @@ export function ItemDetailModal({ sourcePath, imageUrl, onClose }: ItemDetailMod
   const [isDetailLoading, setIsDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  // Cluster carousel state
+  const [clusterImages, setClusterImages] = useState<ClusterItem[]>(
+    imageUrl ? [{ source_path: sourcePath, image_url: imageUrl }] : []
+  );
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [imageReadySrc, setImageReadySrc] = useState("");
+
   // Chat state
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<APIChatMessage[]>([]);
@@ -80,6 +89,16 @@ export function ItemDetailModal({ sourcePath, imageUrl, onClose }: ItemDetailMod
       .then(setDetail)
       .catch((e: Error) => setDetailError(e.message))
       .finally(() => setIsDetailLoading(false));
+
+    fetchItemCluster(sourcePath)
+      .then((data) => {
+        if (data.items.length > 0) {
+          const idx = data.items.findIndex((i) => i.source_path === sourcePath);
+          setClusterImages(data.items);
+          setCurrentImageIndex(idx >= 0 ? idx : 0);
+        }
+      })
+      .catch(() => {/* silently keep the single imageUrl fallback */});
   }, [sourcePath]);
 
   useEffect(() => {
@@ -175,13 +194,55 @@ export function ItemDetailModal({ sourcePath, imageUrl, onClose }: ItemDetailMod
                 {detailError}
               </div>
             ) : (
-              <Image
-                src={detail?.image_url ?? imageUrl ?? ""}
-                alt={heading ?? "Archive item"}
-                fill
-                className="object-cover"
-                sizes="280px"
-              />
+              <>
+                {(() => {
+                  const currentSrc = clusterImages[currentImageIndex]?.image_url ?? detail?.image_url ?? imageUrl ?? "";
+                  return (
+                    <Image
+                      key={clusterImages[currentImageIndex]?.source_path ?? sourcePath}
+                      src={currentSrc}
+                      alt={heading ?? "Archive item"}
+                      fill
+                      className={`object-cover transition-opacity duration-300 ${imageReadySrc === currentSrc ? "opacity-100" : "opacity-0"}`}
+                      sizes="280px"
+                      onLoad={() => setImageReadySrc(currentSrc)}
+                    />
+                  );
+                })()}
+                {clusterImages.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentImageIndex((i) => (i - 1 + clusterImages.length) % clusterImages.length)}
+                      className="absolute left-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60"
+                      aria-label="Previous photo"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentImageIndex((i) => (i + 1) % clusterImages.length)}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60"
+                      aria-label="Next photo"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                    <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+                      {clusterImages.map((_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setCurrentImageIndex(i)}
+                          className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                            i === currentImageIndex ? "bg-white" : "bg-white/40"
+                          }`}
+                          aria-label={`Photo ${i + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </div>
 

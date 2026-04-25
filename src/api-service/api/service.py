@@ -1,5 +1,7 @@
 import os
+import unicodedata
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
@@ -64,8 +66,8 @@ app.add_middleware(
 
 
 def _build_image_url(request: Request, source_path: str) -> str:
-    relative = source_path.removeprefix(DATASET_PREFIX)
-    return str(request.base_url).rstrip("/") + f"/design-images/{relative}"
+    relative = unicodedata.normalize("NFC", source_path.removeprefix(DATASET_PREFIX))
+    return str(request.base_url).rstrip("/") + f"/design-images/{quote(relative, safe='/')}"
 
 
 @app.get("/")
@@ -126,6 +128,42 @@ async def get_archive_item_detail(
         "id": item.id,
         "image_url": _build_image_url(request, item.source_path),
         "metadata": item.model_dump(),
+    }
+
+
+@app.get("/archive/item-cluster")
+async def get_item_cluster(
+    request: Request,
+    source_path: str = Query(...),
+    session: Session = Depends(get_session),
+):
+    item = session.exec(
+        select(FashionItem).where(FashionItem.source_path == source_path)
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    # LLM-clustered items (pdf_available="missing") may group different garments together —
+    # only show multiple angles when items come from the same PDF (available/empty).
+    if item.pdf_available == "missing":
+        cluster_items = [item]
+    else:
+        cluster_items = session.exec(
+            select(FashionItem)
+            .where(FashionItem.cluster_id == item.cluster_id)
+            .where(FashionItem.pdf_available != "missing")
+            .order_by(FashionItem.source_path)
+        ).all() or [item]
+
+    return {
+        "cluster_id": item.cluster_id,
+        "items": [
+            {
+                "source_path": ci.source_path,
+                "image_url": _build_image_url(request, ci.source_path),
+            }
+            for ci in cluster_items
+        ],
     }
 
 

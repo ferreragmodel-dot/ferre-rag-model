@@ -152,6 +152,24 @@ export async function continueItemChat(chatId: string, message: string): Promise
   return response.json() as Promise<ChatData>;
 }
 
+export interface ClusterItem {
+  source_path: string;
+  image_url: string;
+}
+
+export interface ItemClusterResponse {
+  cluster_id: string;
+  items: ClusterItem[];
+}
+
+export async function fetchItemCluster(sourcePath: string): Promise<ItemClusterResponse> {
+  const url = new URL("/archive/item-cluster", API_BASE_URL);
+  url.searchParams.set("source_path", sourcePath);
+  const response = await fetch(url.toString());
+  if (!response.ok) throw new Error(`Failed to fetch item cluster: ${response.status}`);
+  return response.json() as Promise<ItemClusterResponse>;
+}
+
 export async function getChat(chatId: string): Promise<ChatData> {
   const url = new URL(`/llm-agent/chats/${chatId}`, API_BASE_URL);
 

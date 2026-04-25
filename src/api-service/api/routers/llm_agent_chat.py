@@ -4,6 +4,8 @@ import time
 import mimetypes
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import unicodedata
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, Request, HTTPException
 from fastapi.responses import FileResponse
@@ -61,8 +63,8 @@ class ItemChatMessage(BaseModel):
 # ── Image search helpers (general chat) ───────────────────────────────────────
 
 def _build_image_url(request: Request, source_path: str) -> str:
-    relative = source_path.removeprefix(DATASET_PREFIX)
-    return str(request.base_url).rstrip("/") + f"/design-images/{relative}"
+    relative = unicodedata.normalize("NFC", source_path.removeprefix(DATASET_PREFIX))
+    return str(request.base_url).rstrip("/") + f"/design-images/{quote(relative, safe='/')}"
 
 
 def _search_similar_images(
