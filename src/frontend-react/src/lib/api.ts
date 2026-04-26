@@ -32,10 +32,39 @@ export interface ChatData {
   sources?: ChatSource[];
 }
 
-export async function fetchLandingFeed(offset = 0, limit = 24): Promise<LandingFeedResponse> {
+export interface ActiveFilters {
+  season_path?: string;
+  garments?: string[];
+  colors?: string[];
+  materials?: string[];
+}
+
+export interface FilterOptions {
+  seasons: string[];
+  garments: string[];
+  colors: string[];
+  materials: string[];
+}
+
+export async function fetchFilterOptions(): Promise<FilterOptions> {
+  const url = new URL("/archive/filter-options", API_BASE_URL);
+  const response = await fetch(url.toString());
+  if (!response.ok) throw new Error(`Failed to fetch filter options: ${response.status}`);
+  return response.json() as Promise<FilterOptions>;
+}
+
+export async function fetchLandingFeed(
+  offset = 0,
+  limit = 24,
+  filters: ActiveFilters = {},
+): Promise<LandingFeedResponse> {
   const url = new URL("/archive/landing-feed", API_BASE_URL);
   url.searchParams.set("offset", String(offset));
   url.searchParams.set("limit", String(limit));
+  if (filters.season_path) url.searchParams.set("season_path", filters.season_path);
+  for (const g of filters.garments ?? []) url.searchParams.append("garments", g);
+  for (const c of filters.colors ?? []) url.searchParams.append("colors", c);
+  for (const m of filters.materials ?? []) url.searchParams.append("materials", m);
 
   const response = await fetch(url.toString(), {
     method: "GET",

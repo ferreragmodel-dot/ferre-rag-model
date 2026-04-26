@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ImageCard } from "@/components/ImageCard";
 import { ItemDetailModal } from "@/components/ItemDetailModal";
-import { fetchLandingFeed } from "@/lib/api";
+import { ActiveFilters, fetchLandingFeed } from "@/lib/api";
 import { ArchiveImageItem, LandingFeedResponse } from "@/lib/types";
 
 const PAGE_SIZE = 24;
@@ -19,7 +19,11 @@ function getColumnCount(width: number): number {
   return 2;
 }
 
-export function ImageGrid() {
+interface ImageGridProps {
+  filters?: ActiveFilters;
+}
+
+export function ImageGrid({ filters = {} }: ImageGridProps) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [columnCount, setColumnCount] = useState(2);
@@ -31,11 +35,11 @@ export function ImageGrid() {
       LandingFeedResponse,
       Error,
       InfiniteData<LandingFeedResponse, number>,
-      ["landing-feed"],
+      ["landing-feed", ActiveFilters],
       number
     >({
-      queryKey: ["landing-feed"],
-      queryFn: ({ pageParam }) => fetchLandingFeed(pageParam, PAGE_SIZE),
+      queryKey: ["landing-feed", filters],
+      queryFn: ({ pageParam }) => fetchLandingFeed(pageParam, PAGE_SIZE, filters),
       initialPageParam: 0,
       getNextPageParam: (lastPage) =>
         lastPage.pagination.has_more ? lastPage.pagination.next_offset : undefined,
@@ -130,6 +134,19 @@ export function ImageGrid() {
       <section className="mx-auto w-full max-w-[1440px] px-4 pb-10 sm:px-8">
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-red-700">
           Failed to load archive feed: {error.message}
+        </div>
+      </section>
+    );
+  }
+
+  const isEmpty = !isLoading && (data?.pages.flatMap((p) => p.items).length ?? 0) === 0;
+
+  if (isEmpty) {
+    return (
+      <section className="mx-auto w-full max-w-[1440px] px-4 pb-10 sm:px-8">
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <p className="text-base text-foreground/50">No items found.</p>
+          <p className="mt-1.5 text-sm text-foreground/35">Please try different filters.</p>
         </div>
       </section>
     );

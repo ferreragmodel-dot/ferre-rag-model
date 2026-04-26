@@ -1,3 +1,4 @@
+import json
 import os
 import unicodedata
 from pathlib import Path
@@ -5,7 +6,7 @@ from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func
+from sqlalchemy import String, case, cast, func, or_, text as sa_text
 from sqlmodel import Session, select
 from starlette.middleware.cors import CORSMiddleware
 
@@ -75,15 +76,118 @@ async def get_index():
     return {"message": "Welcome to Gianfranco Ferré research assistant"}
 
 
+@app.get("/archive/filter-options")
+async def get_filter_options(session: Session = Depends(get_session)):
+    seasons = [
+        row[0]
+        for row in session.execute(
+            sa_text(
+                "SELECT DISTINCT season_path FROM fashionitem "
+                "WHERE season_path IS NOT NULL ORDER BY season_path"
+            )
+        ).fetchall()
+    ]
+
+    garments = [
+        row[0]
+        for row in session.execute(
+            sa_text(
+                "SELECT DISTINCT value FROM fashionitem, "
+                "json_array_elements_text(garments_tags) AS value "
+                "WHERE value IS NOT NULL AND value <> '' ORDER BY value"
+            )
+        ).fetchall()
+    ]
+
+    colors = [
+        row[0]
+        for row in session.execute(
+            sa_text(
+                "SELECT DISTINCT value FROM fashionitem, "
+                "json_array_elements_text(colors_tags) AS value "
+                "WHERE value IS NOT NULL AND value <> '' ORDER BY value"
+            )
+        ).fetchall()
+    ]
+
+    materials = [
+        row[0]
+        for row in session.execute(
+            sa_text(
+                "SELECT DISTINCT value FROM fashionitem, "
+                "json_array_elements_text(material_tags) AS value "
+                "WHERE value IS NOT NULL AND value <> '' ORDER BY value"
+            )
+        ).fetchall()
+    ]
+
+    return {
+        "seasons": seasons,
+        "garments": garments,
+        "colors": colors,
+        "materials": materials,
+    }
+
+
 @app.get("/archive/landing-feed")
 async def get_landing_feed(
     request: Request,
     offset: int = Query(0, ge=0),
     limit: int = Query(24, ge=1, le=100),
+    season_path: str | None = Query(default=None),
+    garments: list[str] = Query(default=[]),
+    colors: list[str] = Query(default=[]),
+    materials: list[str] = Query(default=[]),
     session: Session = Depends(get_session),
 ):
+    # Build filter conditions (OR within each category, AND across categories)
+    conditions = []
+    if season_path:
+        conditions.append(FashionItem.season_path == season_path)
+    if garments:
+        conditions.append(or_(*[
+            sa_text("fashionitem.garments_tags::jsonb @> CAST(:g_{i} AS jsonb)".replace("{i}", str(i)))
+            .bindparams(**{f"g_{i}": json.dumps([g])})
+            for i, g in enumerate(garments)
+        ]))
+    if colors:
+        conditions.append(or_(*[
+            sa_text("fashionitem.colors_tags::jsonb @> CAST(:c_{i} AS jsonb)".replace("{i}", str(i)))
+            .bindparams(**{f"c_{i}": json.dumps([c])})
+            for i, c in enumerate(colors)
+        ]))
+    if materials:
+        conditions.append(or_(*[
+            sa_text("fashionitem.material_tags::jsonb @> CAST(:m_{i} AS jsonb)".replace("{i}", str(i)))
+            .bindparams(**{f"m_{i}": json.dumps([m])})
+            for i, m in enumerate(materials)
+        ]))
+
+    # Deduplication: for PDF-sourced items, show one image per cluster_id.
+    # For LLM-clustered items (pdf_available="missing"), cluster may be wrong
+    # so every image gets its own partition key (id::text) and all are shown.
+    partition_key = case(
+        (FashionItem.pdf_available == "missing", cast(FashionItem.id, String())),
+        else_=FashionItem.cluster_id,
+    )
+    row_num = func.row_number().over(
+        partition_by=partition_key,
+        order_by=FashionItem.source_path,
+    ).label("rn")
+
+    inner = select(FashionItem.id, row_num)
+    for cond in conditions:
+        inner = inner.where(cond)
+    subq = inner.subquery("deduped")
+
+    rep_ids = select(subq.c.id).where(subq.c.rn == 1)
+
     items = session.exec(
-        select(FashionItem).order_by(func.random()).offset(offset).limit(limit)
+        select(FashionItem)
+        .where(FashionItem.id.in_(rep_ids))
+        .order_by(func.random())
+        .offset(offset)
+        .limit(limit)
     ).all()
 
     return {

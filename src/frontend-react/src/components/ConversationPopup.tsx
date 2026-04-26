@@ -7,6 +7,32 @@ import { ArrowLeft, Search } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Input } from "@/components/ui/input";
+
+function ChatImageThumb({
+  src,
+  onClick,
+}: {
+  src: string;
+  onClick: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative aspect-[3/5] overflow-hidden rounded-lg border border-border transition-opacity hover:opacity-80 ${loaded ? "bg-transparent" : "animate-pulse bg-muted"}`}
+    >
+      <Image
+        src={src}
+        alt="Archive item"
+        fill
+        className={`object-cover object-top transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        sizes="(max-width: 768px) 100px, 150px"
+        onLoad={() => setLoaded(true)}
+      />
+    </button>
+  );
+}
 import { ItemDetailModal } from "@/components/ItemDetailModal";
 import {
   startChat,
@@ -315,20 +341,11 @@ export function ConversationPopup({ initialQuery, onClose, itemSourcePath }: Con
                   <div className="mb-6">
                     <div className="grid grid-cols-3 gap-3">
                       {images.map((img, idx) => (
-                        <button
+                        <ChatImageThumb
                           key={idx}
-                          type="button"
+                          src={img.image_url}
                           onClick={() => setSelectedChatImage(img)}
-                          className="relative aspect-[3/5] overflow-hidden rounded-lg border border-border bg-muted transition-opacity hover:opacity-80"
-                        >
-                          <Image
-                            src={img.image_url}
-                            alt="Archive item"
-                            fill
-                            className="object-cover object-top"
-                            sizes="(max-width: 768px) 100px, 150px"
-                          />
-                        </button>
+                        />
                       ))}
                     </div>
                   </div>

@@ -11,7 +11,7 @@ services:
             - .:/app
             - ../../../secrets:/secrets
             - ./input-datasets:/app/input-datasets
-            - ../../../Dataset\ DataShack\ 2026:/app/Dataset\ DataShack\ 2026
+            - "../../Dataset DataShack 2026:/app/Dataset DataShack 2026"
             - ./outputs:/app/outputs
             - ./metadata:/app/metadata
         environment:
