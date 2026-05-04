@@ -32,9 +32,15 @@ CHROMADB_PORT = os.environ["CHROMADB_PORT"]
 llm_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 #############################################################################
 
-# Initialize Vertex AI for multimodal embeddings
+# Initialize Vertex AI for multimodal embeddings (lazy-loaded on first use)
 vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-multimodal_model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
+_multimodal_model = None
+
+def _get_multimodal_model():
+    global _multimodal_model
+    if _multimodal_model is None:
+        _multimodal_model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
+    return _multimodal_model
 
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
@@ -146,9 +152,20 @@ def _build_retrieved_images_content(selected_images: Optional[List[Dict[str, str
         if not source_path:
             continue
 
-        relative_path = source_path.removeprefix(DATASET_PREFIX)
-        image_path = (design_images_dir / relative_path).resolve()
+        # Try GCS first, fall back to local disk
+        from api.utils.gcs_utils import fetch_image_bytes
+        gcs_result = fetch_image_bytes(source_path)
+        if gcs_result:
+            image_data, mime_type = gcs_result
+            parts.append(Part.from_bytes(data=image_data, mime_type=mime_type))
+            continue
 
+        # Local fallback
+        relative_path = source_path.removeprefix(DATASET_PREFIX)
+        image_path = (design_images_dir / relative_path).resolve() if design_images_dir else None
+
+        if image_path is None:
+            continue
         try:
             image_path.relative_to(design_images_dir.resolve())
         except ValueError:
@@ -190,7 +207,7 @@ def generate_image_query_embedding(query: str) -> List[float]:
     proper semantic similarity search.
     """
     try:
-        response = multimodal_model.get_embeddings(
+        response = _get_multimodal_model().get_embeddings(
             contextual_text=query,
             dimension=MULTIMODAL_EMBEDDING_DIMENSION
         )

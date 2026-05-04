@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import String, case, cast, func, or_, text as sa_text
 from sqlmodel import Session, select
@@ -67,6 +68,10 @@ app.add_middleware(
 
 
 def _build_image_url(request: Request, source_path: str) -> str:
+    from api.utils.gcs_utils import build_proxy_url
+    proxy = build_proxy_url(str(request.base_url), source_path)
+    if proxy:
+        return proxy
     relative = unicodedata.normalize("NFC", source_path.removeprefix(DATASET_PREFIX))
     return str(request.base_url).rstrip("/") + f"/design-images/{quote(relative, safe='/')}"
 
@@ -269,6 +274,22 @@ async def get_item_cluster(
             for ci in cluster_items
         ],
     }
+
+
+@app.get("/archive/image")
+async def proxy_image(source_path: str = Query(...)):
+    """Proxy an image from GCS, streaming bytes back to the client."""
+    from api.utils.gcs_utils import GCS_BUCKET, _get_gcs_client, source_path_to_gcs_object
+    if not GCS_BUCKET:
+        raise HTTPException(status_code=404, detail="GCS not configured")
+    try:
+        client = _get_gcs_client()
+        blob = client.bucket(GCS_BUCKET).blob(source_path_to_gcs_object(source_path))
+        data = blob.download_as_bytes()
+        content_type = blob.content_type or "image/jpeg"
+        return StreamingResponse(iter([data]), media_type=content_type)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Image not found: {e}")
 
 
 app.include_router(llm_agent_chat.router, prefix="/llm-agent")
