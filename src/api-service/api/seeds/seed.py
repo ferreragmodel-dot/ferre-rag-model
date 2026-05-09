@@ -7,6 +7,7 @@ Run from inside the container:
 import json
 from pathlib import Path
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from api.db import create_db_and_tables, engine
@@ -24,6 +25,11 @@ def seed():
         lines = [line.strip() for line in f if line.strip()]
 
     with Session(engine) as session:
+        count = session.exec(select(func.count()).select_from(FashionItem)).one()
+        if count > 0:
+            print(f"[seed] {count} records already present, skipping.")
+            return
+
         for raw in lines:
             record = json.loads(raw)
 
@@ -31,16 +37,7 @@ def seed():
                 continue
 
             item_data = {k: v for k, v in record.items() if k in valid_fields}
-
-            existing = session.exec(
-                select(FashionItem).where(FashionItem.source_path == item_data["source_path"])
-            ).first()
-            if existing:
-                print(f"[skip] already exists: {item_data['source_path']}")
-                continue
-
-            item = FashionItem(**item_data)
-            session.add(item)
+            session.add(FashionItem(**item_data))
             print(f"[insert] {item_data['source_path']}")
 
         session.commit()

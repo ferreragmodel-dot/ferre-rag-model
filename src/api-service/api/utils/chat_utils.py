@@ -6,10 +6,7 @@ import base64
 import traceback
 from pydantic import BaseModel, Field
 
-DEFAULT_PERSISTENT_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", ".local-persistent")
-)
-persistent_dir = os.environ.get("CHAT_PERSISTENT_DIR", DEFAULT_PERSISTENT_DIR)
+DEFAULT_PERSISTENT_DIR = os.environ.get("CHAT_PERSISTENT_DIR", "/tmp/.local-persistent")
 
 
 class ChatMessage(BaseModel):
@@ -23,7 +20,7 @@ class ChatHistoryManager:
     def __init__(self, model, history_dir: str = "chat-history"):
         """Initialize the chat history manager with the specified directory"""
         self.model = model
-        self.history_dir = os.path.join(persistent_dir, history_dir, model)
+        self.history_dir = os.path.join(DEFAULT_PERSISTENT_DIR, history_dir, model)
         self.images_dir = os.path.join(self.history_dir, "images")
         self._ensure_directories()
 

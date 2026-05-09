@@ -26,7 +26,7 @@ app = FastAPI(title="API Server", description="API Server", version="v1")
 DATASET_PREFIX = "Dataset DataShack 2026/"
 
 
-def _resolve_design_images_dir() -> str:
+def _resolve_design_images_dir() -> str | None:
     env_path = os.environ.get("DESIGN_IMAGES_DIR")
     if env_path and Path(env_path).exists():
         return env_path
@@ -36,14 +36,14 @@ def _resolve_design_images_dir() -> str:
         return str(docker_path)
 
     # Local dev fallback: repo root contains "Dataset DataShack 2026"
-    local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
-    if local_repo_dataset.exists():
-        return str(local_repo_dataset)
+    try:
+        local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
+        if local_repo_dataset.exists():
+            return str(local_repo_dataset)
+    except IndexError:
+        pass
 
-    # Keep startup informative if neither Docker mount nor local dataset is present.
-    raise RuntimeError(
-        "Design images directory not found. Set DESIGN_IMAGES_DIR or mount /design-images."
-    )
+    return None
 
 
 @app.on_event("startup")
@@ -52,11 +52,13 @@ def on_startup():
     seed()
 
 
-app.mount(
-    "/design-images",
-    StaticFiles(directory=_resolve_design_images_dir()),
-    name="design-images",
-)
+_design_images_dir = _resolve_design_images_dir()
+if _design_images_dir:
+    app.mount(
+        "/design-images",
+        StaticFiles(directory=_design_images_dir),
+        name="design-images",
+    )
 
 app.add_middleware(
     CORSMiddleware,

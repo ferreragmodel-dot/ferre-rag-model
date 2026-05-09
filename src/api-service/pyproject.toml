@@ -13,6 +13,8 @@ dependencies = [
     "google-genai>=1.47.0",
     "pillow>=12.0.0",
     "psycopg2-binary>=2.9.11",
+    "cloud-sql-python-connector[pg8000]>=1.14.0",
+    "pg8000>=1.31.0",
     "sqlmodel>=0.0.37",
     "uvicorn>=0.34.3",
 ]
