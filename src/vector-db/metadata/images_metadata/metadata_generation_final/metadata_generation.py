@@ -5,13 +5,13 @@ Generate final Ferré image metadata from the combined cluster registry.
 Key behavior
 ------------
 - Reads all_outfit_clusters_registry.jsonl
-- For pdf_status == "available":
+- For pdf_status in {"available", "incomplete"}:
     * sends all existing cluster images + matched PDF text to the LLM
-    * uses archive_keywords only
+    * uses merged archive_keywords + external_seed_keywords
     * copies PDF-derived fields directly from the matched grounded season JSON entry
-- For pdf_status in {"missing", "empty"}:
+- For pdf_status == "missing":
     * sends all existing cluster images only
-    * uses external_seed_keywords only
+    * uses merged archive_keywords + external_seed_keywords
     * fills PDF-derived fields with null
 - Skips image paths that do not exist on disk
 - Does NOT generate output rows for skipped/missing images
@@ -54,7 +54,7 @@ BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(__file__).resolve().parents[5]
 
 DEFAULT_CLUSTERS = BASE_DIR / "all_outfit_clusters_registry.jsonl"
-DEFAULT_OUTPUT = BASE_DIR / "generated_image_metadata.jsonl"
+DEFAULT_OUTPUT = BASE_DIR / "generated_image_metadata_final.jsonl"
 DEFAULT_SKIPPED_OUTPUT = BASE_DIR / "skipped_images.jsonl"
 DEFAULT_ONTOLOGY = (BASE_DIR / "../fashion_ontology/ferre_retrieval_ontology.json").resolve()
 DEFAULT_GROUNDED_DIR = (BASE_DIR / "../grounded_metadata/grounded_outfit").resolve()
@@ -110,6 +110,9 @@ PDF_FIELDS = [
 
 MAX_RETRIES = 3
 INITIAL_BACKOFF = 2
+PDF_BACKED_STATUSES = {"available", "incomplete"}
+PDF_BACKED_TAG_LIMIT = 10
+IMAGE_ONLY_TAG_LIMIT = 5
 
 
 # ---------------------------
@@ -250,17 +253,23 @@ def load_ontology(path: Path) -> Dict[str, Any]:
         return json.load(f)
 
 
-def get_allowed_keywords(ontology: Dict[str, Any], mode: str) -> Dict[str, List[str]]:
+def get_allowed_keywords(ontology: Dict[str, Any], mode: Optional[str] = None) -> Dict[str, List[str]]:
     """
-    mode:
-      - image+pdf  -> archive_keywords only
-      - image_only -> external_seed_keywords only
-    """
-    key_name = "archive_keywords" if mode == "image+pdf" else "external_seed_keywords"
+    Use the full retrieval vocabulary for every run mode.
 
+    The mode argument is accepted for backward compatibility with older callers.
+    """
     allowed = {}
     for field in TAG_FIELDS:
-        allowed[field] = ontology[field][key_name]
+        merged: List[str] = []
+        seen = set()
+        for key_name in ["archive_keywords", "external_seed_keywords"]:
+            for keyword in ontology[field].get(key_name, []):
+                normalized = normalize_text(keyword)
+                if normalized and normalized not in seen:
+                    merged.append(normalized)
+                    seen.add(normalized)
+        allowed[field] = merged
     return allowed
 
 
@@ -419,11 +428,18 @@ def build_cluster_prompt(
         ],
         "mode_specific_rules": [
             (
-                "This cluster is image+pdf. Use the PDF text as grounding support. Use ONLY archive_keywords."
+                "This cluster is image+pdf. Use the PDF text as grounding support. Use ONLY the supplied vocabulary."
                 if mode == "image+pdf"
                 else
-                "This cluster is image_only. There is no usable PDF support. Use ONLY external_seed_keywords."
+                "This cluster is image_only. There is no PDF support. Use ONLY the supplied vocabulary."
             )
+        ],
+        "tag_selection_rules": [
+            "Choose only high-confidence tags that are clearly visible in the image or explicitly supported by the PDF text.",
+            "Prefer a short, precise list over a broad list of plausible but weakly supported tags.",
+            f"For PDF-backed clusters, aim for at most {PDF_BACKED_TAG_LIMIT} values per tag field.",
+            f"For image-only clusters, aim for at most {IMAGE_ONLY_TAG_LIMIT} values per tag field.",
+            "If many vocabulary terms could apply, keep the strongest and most specific ones.",
         ],
         "cluster_confidence_rules": [
             "You must take cluster_confidence seriously when deciding whether metadata should stay consistent across images.",
@@ -518,7 +534,7 @@ def call_llm_with_retry(
 # Post-processing
 # ---------------------------
 
-def normalize_tag_list(values: Any, allowed: List[str]) -> List[str]:
+def normalize_tag_list(values: Any, allowed: List[str], max_items: Optional[int] = None) -> List[str]:
     if not isinstance(values, list):
         return []
 
@@ -529,7 +545,17 @@ def normalize_tag_list(values: Any, allowed: List[str]) -> List[str]:
             vv = normalize_text(v)
             if vv and vv in allowed_set and vv not in out:
                 out.append(vv)
+                if max_items is not None and len(out) >= max_items:
+                    break
     return out
+
+
+def tag_limit_for_cluster(cluster: Dict[str, Any]) -> int:
+    return (
+        PDF_BACKED_TAG_LIMIT
+        if cluster.get("pdf_status") in PDF_BACKED_STATUSES
+        else IMAGE_ONLY_TAG_LIMIT
+    )
 
 
 def cluster_to_output_rows(
@@ -539,7 +565,8 @@ def cluster_to_output_rows(
     grounded_entry: Optional[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     pdf_fields = extract_pdf_fields_from_entry(grounded_entry) \
-        if cluster["pdf_status"] == "available" else make_no_pdf_fields()
+        if cluster["pdf_status"] in PDF_BACKED_STATUSES else make_no_pdf_fields()
+    tag_limit = tag_limit_for_cluster(cluster)
 
     image_result_map = {}
     for image_path in cluster["image_paths"]:
@@ -564,7 +591,8 @@ def cluster_to_output_rows(
             for field in TAG_FIELDS:
                 image_result_map[source_path][field] = normalize_tag_list(
                     item.get(field, []),
-                    allowed_keywords[field]
+                    allowed_keywords[field],
+                    max_items=tag_limit,
                 )
 
     season_path = cluster.get("season") or None
@@ -762,7 +790,7 @@ def main() -> None:
             allowed_keywords = get_allowed_keywords(ontology, cluster["llm_input_mode"])
             grounded_entry = (
                 get_grounded_entry_for_cluster(cluster, grounded_lookup)
-                if cluster["pdf_status"] == "available"
+                if cluster["pdf_status"] in PDF_BACKED_STATUSES
                 else None
             )
 

@@ -1,7 +1,7 @@
 import json
 import os
 
-CONTENT_FIELDS = ["description", "materials", "source", "remark", "working_process"]
+PDF_COMPLETENESS_FIELDS = ["description", "materials", "remark"]
 
 season_files = [
     "grounded_outfit/dataset_datashack_2026_alta_moda_1986-87_fw_all.json",
@@ -14,6 +14,22 @@ season_files = [
 
 def is_nonempty(x):
     return x is not None and str(x).strip() != ""
+
+def classify_pdf_status(fields):
+    has_any_pdf_field = any(
+        is_nonempty(fields.get(field))
+        for field in PDF_COMPLETENESS_FIELDS
+    )
+    has_complete_pdf_fields = all(
+        is_nonempty(fields.get(field))
+        for field in PDF_COMPLETENESS_FIELDS
+    )
+
+    if has_complete_pdf_fields:
+        return "available"
+    if has_any_pdf_field:
+        return "incomplete"
+    return "empty"
 
 def normalize_season_from_filename(filename: str) -> str:
     """
@@ -41,60 +57,62 @@ def normalize_season_from_filename(filename: str) -> str:
     else:
         return year_part
 
-# Build a lookup table: (season, basename) -> "available" / "empty"
-pdf_status_map = {}
-
-for season_file in season_files:
-    with open(season_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    season_key = normalize_season_from_filename(season_file)
-
-    for entry in data:
-        fields = entry.get("fields", {})
-        description = fields.get("description")
-
-        non_empty_count = sum(
-            1 for field in CONTENT_FIELDS if is_nonempty(fields.get(field))
-        )
-
-        if not is_nonempty(description) or non_empty_count < 2:
-            status = "empty"
-        else:
-            status = "available"
-
-        for pdf_key in ["technical_description_pdf", "technical_images_pdf"]:
-            pdf_path = entry.get(pdf_key)
-            if is_nonempty(pdf_path):
-                basename = os.path.basename(pdf_path)
-                pdf_status_map[(season_key, basename)] = status
-
-# Update grounded registry
 input_registry = "grounded_outfit_dhash_clusters_registry_fixed_paths.json"
-output_registry = "grounded_outfit_dhash_clusters_registry_final.json"
+output_registry = "grounded_outfit_dhash_clusters_registry_final_May.json"
 
-with open(input_registry, "r", encoding="utf-8") as f:
-    registry = json.load(f)
 
-for cluster in registry:
-    cluster_season = cluster.get("season")
-    pdf_paths = cluster.get("pdf_paths", [])
+def build_pdf_status_map():
+    # Build a lookup table: (season, basename) -> "available" / "incomplete"
+    pdf_status_map = {}
 
-    statuses = []
-    for p in pdf_paths:
-        basename = os.path.basename(p)
-        status = pdf_status_map.get((cluster_season, basename))
-        if status is not None:
-            statuses.append(status)
+    for season_file in season_files:
+        with open(season_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-    # Since this grounded registry only contains PDF-backed clusters,
-    # assign available if any linked PDF is available; otherwise empty.
-    if "available" in statuses:
-        cluster["pdf_status"] = "available"
-    else:
-        cluster["pdf_status"] = "empty"
+        season_key = normalize_season_from_filename(season_file)
 
-with open(output_registry, "w", encoding="utf-8") as f:
-    json.dump(registry, f, ensure_ascii=False, indent=2)
+        for entry in data:
+            fields = entry.get("fields", {})
+            status = classify_pdf_status(fields)
 
-print(f"Done. Updated registry saved to: {output_registry}")
+            for pdf_key in ["technical_description_pdf", "technical_images_pdf"]:
+                pdf_path = entry.get(pdf_key)
+                if is_nonempty(pdf_path):
+                    basename = os.path.basename(pdf_path)
+                    pdf_status_map[(season_key, basename)] = status
+
+    return pdf_status_map
+
+
+def main():
+    pdf_status_map = build_pdf_status_map()
+
+    with open(input_registry, "r", encoding="utf-8") as f:
+        registry = json.load(f)
+
+    for cluster in registry:
+        cluster_season = cluster.get("season")
+        pdf_paths = cluster.get("pdf_paths", [])
+
+        statuses = []
+        for p in pdf_paths:
+            basename = os.path.basename(p)
+            status = pdf_status_map.get((cluster_season, basename))
+            if status is not None:
+                statuses.append(status)
+
+        # Since this grounded registry only contains PDF-backed clusters,
+        # assign available if any linked PDF is complete; otherwise incomplete.
+        if "available" in statuses:
+            cluster["pdf_status"] = "available"
+        else:
+            cluster["pdf_status"] = "incomplete"
+
+    with open(output_registry, "w", encoding="utf-8") as f:
+        json.dump(registry, f, ensure_ascii=False, indent=2)
+
+    print(f"Done. Updated registry saved to: {output_registry}")
+
+
+if __name__ == "__main__":
+    main()

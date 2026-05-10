@@ -41,45 +41,53 @@ def extract_outfit_id(cluster_id: str):
 
 
 # Extract season from cluster_id
-# Example: "FW1986-1987_file_202" -> "FW1986-1987"
+# Examples:
+# "FW1986-1987_file_202" -> "FW1986-1987"
+# "SS1987_file_301" -> "SS1987"
 def extract_season(cluster_id: str):
-    match = re.match(r'^([A-Z]{2}\d{4}-\d{4})_', cluster_id)
+    match = re.match(r'^((?:FW\d{4}-\d{4})|(?:SS\d{4}))_', cluster_id)
     return match.group(1) if match else None
 
 
 input_file = "grounded_outfit_dhash_clusters_registry.json"
 output_file = "grounded_outfit_dhash_clusters_registry_fixed_paths.json"
 
-with open(input_file, "r", encoding="utf-8") as f:
-    data = json.load(f)
 
-for obj in data:
-    cluster_id = obj.get("cluster_id", "")
+def main():
+    with open(input_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-    # Update outfit_id based on the trailing numeric part of cluster_id
-    obj["outfit_id"] = extract_outfit_id(cluster_id)
+    for obj in data:
+        cluster_id = obj.get("cluster_id", "")
 
-    # Update season based on the prefix of cluster_id
-    obj["season"] = extract_season(cluster_id)
+        # Update outfit_id based on the trailing numeric part of cluster_id
+        obj["outfit_id"] = extract_outfit_id(cluster_id)
 
-    # Set llm_input_mode for grounded clusters
-    obj["llm_input_mode"] = "image+pdf"
+        # Update season based on the prefix of cluster_id
+        obj["season"] = extract_season(cluster_id)
 
-    # Update image_paths only if present and valid
-    if "image_paths" in obj and isinstance(obj["image_paths"], list):
-        obj["image_paths"] = [
-            fix_path(p) if isinstance(p, str) else p
-            for p in obj["image_paths"]
-        ]
+        # Set llm_input_mode for grounded clusters
+        obj["llm_input_mode"] = "image+pdf"
 
-    # Update pdf_paths only if present and valid
-    if "pdf_paths" in obj and isinstance(obj["pdf_paths"], list):
-        obj["pdf_paths"] = [
-            fix_path(p) if isinstance(p, str) else p
-            for p in obj["pdf_paths"]
-        ]
+        # Update image_paths only if present and valid
+        if "image_paths" in obj and isinstance(obj["image_paths"], list):
+            obj["image_paths"] = [
+                fix_path(p) if isinstance(p, str) else p
+                for p in obj["image_paths"]
+            ]
 
-with open(output_file, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
+        # Update pdf_paths only if present and valid
+        if "pdf_paths" in obj and isinstance(obj["pdf_paths"], list):
+            obj["pdf_paths"] = [
+                fix_path(p) if isinstance(p, str) else p
+                for p in obj["pdf_paths"]
+            ]
 
-print(f"Done. Fixed file saved to: {output_file}")
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f"Done. Fixed file saved to: {output_file}")
+
+
+if __name__ == "__main__":
+    main()
