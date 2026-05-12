@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { QueryProvider } from "@/providers/query-provider";
+import PasswordGate from "@/components/PasswordGate";
 
 import "./globals.css";
 
@@ -17,7 +18,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-        <QueryProvider>{children}</QueryProvider>
+        <QueryProvider>
+          <PasswordGate>{children}</PasswordGate>
+        </QueryProvider>
       </body>
     </html>
   );
