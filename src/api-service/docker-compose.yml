@@ -23,6 +23,7 @@ services:
             CHAT_PERSISTENT_DIR: /persistent
             CHROMADB_HOST: llm-rag-chromadb
             CHROMADB_PORT: 8000
+            GROQ_API_KEY: ${GROQ_API_KEY}
             POSTGRES_HOST: llm-rag-postgres
             POSTGRES_PORT: 5432
             POSTGRES_DB: ${POSTGRES_DB:-ragdb}

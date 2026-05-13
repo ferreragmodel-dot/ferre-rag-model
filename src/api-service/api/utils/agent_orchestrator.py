@@ -1,4 +1,5 @@
 import os
+import json
 from typing import Dict, Any, List, Optional
 from fastapi import HTTPException
 import base64
@@ -14,6 +15,7 @@ from google.genai.types import Content, Part
 from google.genai import errors
 import vertexai
 from vertexai.vision_models import MultiModalEmbeddingModel
+from groq import Groq
 
 from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls, image_search_tool
 
@@ -23,30 +25,130 @@ GCP_LOCATION = "us-central1"
 EMBEDDING_MODEL = "text-embedding-004"
 EMBEDDING_DIMENSION = 256
 MULTIMODAL_EMBEDDING_DIMENSION = 1408  # For image embeddings
-GENERATIVE_MODEL = os.environ.get("GENERATIVE_MODEL", "gemini-2.0-flash")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 CHROMADB_HOST = os.environ["CHROMADB_HOST"]
 CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 CHROMADB_SSL = os.environ.get("CHROMADB_SSL", "false").lower() == "true"
 
 #############################################################################
-#                       Initialize the LLM Client                           #
+#                       Initialize clients                                  #
 import google.auth
 
-_google_api_key = os.environ.get("GOOGLE_API_KEY")
-if _google_api_key:
-    llm_client = genai.Client(api_key=_google_api_key)
-else:
-    _credentials, _ = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
-    _credentials = _credentials.with_quota_project(GCP_PROJECT)
-    llm_client = genai.Client(
-        vertexai=True,
-        project=GCP_PROJECT,
-        location=GCP_LOCATION,
-        credentials=_credentials,
-    )
+# Vertex AI client — used exclusively for embeddings (service account auth)
+_credentials, _ = google.auth.default(
+    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+)
+_credentials = _credentials.with_quota_project(GCP_PROJECT)
+llm_client = genai.Client(
+    vertexai=True,
+    project=GCP_PROJECT,
+    location=GCP_LOCATION,
+    credentials=_credentials,
+)
+
+# Groq client — used for all text generation
+_groq_api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("GROQ_KEY")
+groq_client = Groq(api_key=_groq_api_key)
+print(f"[LLM CLIENT] Using Groq (model: {GROQ_MODEL}) + Vertex AI for embeddings")
 #############################################################################
+
+
+class _FunctionCall:
+    """Duck-type compatible with Google GenAI FunctionCall for execute_function_calls."""
+
+    def __init__(self, name: str, args: dict):
+        self.name = name
+        self.args = args
+
+
+def _normalize_schema(schema: dict) -> dict:
+    """Recursively lowercase 'type' values from Google's Schema enum format to JSON Schema format."""
+    if not isinstance(schema, dict):
+        return schema
+    result = {}
+    for k, v in schema.items():
+        if k == "type" and isinstance(v, str):
+            result[k] = v.lower()
+        elif isinstance(v, dict):
+            result[k] = _normalize_schema(v)
+        elif isinstance(v, list):
+            result[k] = [_normalize_schema(i) if isinstance(i, dict) else i for i in v]
+        else:
+            result[k] = v
+    return result
+
+
+def _tool_to_openai(google_tool: types.Tool) -> list:
+    """Convert a Google GenAI Tool to OpenAI-compatible tool format.
+
+    fd.parameters is a Pydantic Schema object; model_dump() converts it to a
+    plain dict that the Groq (OpenAI-compatible) client can serialize.
+    """
+    tools = []
+    for fd in google_tool.function_declarations:
+        params = fd.parameters
+        if hasattr(params, "model_dump"):
+            params = params.model_dump(exclude_none=True)
+        params = _normalize_schema(params)
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": fd.name,
+                "description": fd.description,
+                "parameters": params,
+            },
+        })
+    return tools
+
+
+def _contents_to_messages(contents: list, system: str = None) -> list:
+    """Convert Google GenAI Content objects to OpenAI-compatible messages.
+
+    Binary image parts (inline_data) are skipped — Groq text models don't
+    support raw image bytes. Text image_context is preserved.
+    """
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    for content in contents:
+        role = "assistant" if (content.role or "") == "model" else "user"
+        tool_calls = []
+        tool_responses = []
+        text_parts = []
+        for part in content.parts or []:
+            if getattr(part, "function_call", None):
+                fc = part.function_call
+                tool_calls.append({
+                    "id": f"call_{fc.name}",
+                    "type": "function",
+                    "function": {
+                        "name": fc.name,
+                        "arguments": json.dumps(dict(fc.args)),
+                    },
+                })
+            elif getattr(part, "function_response", None):
+                fr = part.function_response
+                resp = dict(fr.response) if fr.response else {}
+                tool_responses.append({
+                    "role": "tool",
+                    "tool_call_id": f"call_{fr.name}",
+                    "content": resp.get("content", json.dumps(resp)),
+                })
+            elif getattr(part, "text", None):
+                text_parts.append(part.text)
+            # Skip inline_data (image bytes)
+
+        if tool_calls:
+            msg: dict = {"role": "assistant", "content": None, "tool_calls": tool_calls}
+            if text_parts:
+                msg["content"] = "\n".join(text_parts)
+            messages.append(msg)
+        elif tool_responses:
+            messages.extend(tool_responses)
+        elif text_parts:
+            messages.append({"role": role, "content": "\n".join(text_parts)})
+        # else: content had only inline_data (image bytes) — skip entirely
+    return messages
 
 # Initialize Vertex AI for multimodal embeddings (lazy-loaded on first use)
 vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
@@ -344,23 +446,20 @@ def extract_image_filters(query: str) -> tuple[str, Optional[dict], Optional[dic
         where and where_document are None when no filters of that type were identified.
     """
     try:
-        response = llm_client.models.generate_content(
-            model=GENERATIVE_MODEL,
-            contents=[Content(role="user", parts=[Part.from_text(text=query)])],
-            config=types.GenerateContentConfig(
-                temperature=0,
-                tools=[image_search_tool],
-                tool_config=types.ToolConfig(
-                    function_calling_config=types.FunctionCallingConfig(mode="any")
-                ),
-            ),
+        print(f"[GROQ] extract_image_filters: calling {GROQ_MODEL} with tool_choice=required")
+        _resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": query}],
+            tools=_tool_to_openai(image_search_tool),
+            tool_choice="required",
+            temperature=0,
         )
         function_calls = [
-            part.function_call
-            for part in response.candidates[0].content.parts
-            if part.function_call
+            _FunctionCall(tc.function.name, json.loads(tc.function.arguments))
+            for tc in (_resp.choices[0].message.tool_calls or [])
         ]
         if not function_calls:
+            print("[GROQ] extract_image_filters: no tool calls returned, using plain query")
             return query, None, None, None, []
 
         args = dict(function_calls[0].args)
@@ -447,29 +546,32 @@ def retrieve_text_chunks(
         else:
             tool_selection_contents = session.history + [user_content]
 
-        tool_selection_response = llm_client.models.generate_content(
-            model=GENERATIVE_MODEL,
-            contents=tool_selection_contents,
-            config=types.GenerateContentConfig(
-                temperature=0,
-                tools=[ferre_archive_tool],
-                tool_config=types.ToolConfig(
-                    function_calling_config=types.FunctionCallingConfig(mode="any")
-                ),
-            ),
+        print(f"[GROQ] retrieve_text_chunks: calling {GROQ_MODEL} for tool selection ({len(tool_selection_contents)} history items)")
+        _sel_resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=_contents_to_messages(tool_selection_contents),
+            tools=_tool_to_openai(ferre_archive_tool),
+            tool_choice="required",
+            temperature=0,
         )
-
+        _groq_tool_calls = _sel_resp.choices[0].message.tool_calls or []
         function_calls = [
-            part.function_call
-            for part in tool_selection_response.candidates[0].content.parts
-            if part.function_call
+            _FunctionCall(tc.function.name, json.loads(tc.function.arguments))
+            for tc in _groq_tool_calls
         ]
-        print("Function calls:", function_calls)
+        print(f"[GROQ] tool selection: {[f'{fc.name}({fc.args})' for fc in function_calls]}")
 
         if not function_calls:
             return user_content, None, None, []
 
-        tool_call_content = tool_selection_response.candidates[0].content
+        # Reconstruct a Google Content for history so future turns have tool context
+        tool_call_content = Content(
+            role="model",
+            parts=[
+                types.Part(function_call=types.FunctionCall(name=fc.name, args=fc.args))
+                for fc in function_calls
+            ],
+        )
 
         # Step 2: Execute function calls against ChromaDB
         function_responses, sources = execute_function_calls(
@@ -524,20 +626,15 @@ def generate_final_answer(
             contents.append(retrieved_images_content)
 
         system = system_instruction if system_instruction is not None else SYSTEM_INSTRUCTION
-        config = types.GenerateContentConfig(
-            system_instruction=system,
-            tools=[ferre_archive_tool] if tool_call_content is not None else [],
-            tool_config=types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(mode="none")
-            ) if tool_call_content is not None else None,
+        _messages = _contents_to_messages(contents, system=system)
+        print(f"[GROQ] generate_final_answer: calling {GROQ_MODEL} with {len(_messages)} messages")
+        _final_resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=_messages,
         )
-
-        final_response = llm_client.models.generate_content(
-            model=GENERATIVE_MODEL,
-            contents=contents,
-            config=config,
-        )
-        final_text = final_response.text
+        final_text = _final_resp.choices[0].message.content
+        usage = _final_resp.usage
+        print(f"[GROQ] generate_final_answer: done — {usage.prompt_tokens} prompt / {usage.completion_tokens} completion tokens")
 
         # Append the exchange to history.
         # Image bytes (retrieved_images_content) are intentionally NOT stored —
