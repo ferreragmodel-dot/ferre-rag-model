@@ -23,18 +23,40 @@ GCP_LOCATION = "us-central1"
 EMBEDDING_MODEL = "text-embedding-004"
 EMBEDDING_DIMENSION = 256
 MULTIMODAL_EMBEDDING_DIMENSION = 1408  # For image embeddings
-GENERATIVE_MODEL = "gemini-2.0-flash-001"
+GENERATIVE_MODEL = os.environ.get("GENERATIVE_MODEL", "gemini-2.0-flash")
 CHROMADB_HOST = os.environ["CHROMADB_HOST"]
-CHROMADB_PORT = os.environ["CHROMADB_PORT"]
+CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
+CHROMADB_SSL = os.environ.get("CHROMADB_SSL", "false").lower() == "true"
 
 #############################################################################
 #                       Initialize the LLM Client                           #
-llm_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
+import google.auth
+
+_google_api_key = os.environ.get("GOOGLE_API_KEY")
+if _google_api_key:
+    llm_client = genai.Client(api_key=_google_api_key)
+else:
+    _credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    _credentials = _credentials.with_quota_project(GCP_PROJECT)
+    llm_client = genai.Client(
+        vertexai=True,
+        project=GCP_PROJECT,
+        location=GCP_LOCATION,
+        credentials=_credentials,
+    )
 #############################################################################
 
-# Initialize Vertex AI for multimodal embeddings
+# Initialize Vertex AI for multimodal embeddings (lazy-loaded on first use)
 vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-multimodal_model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
+_multimodal_model = None
+
+def _get_multimodal_model():
+    global _multimodal_model
+    if _multimodal_model is None:
+        _multimodal_model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
+    return _multimodal_model
 
 # Initialize the GenerativeModel with specific system instructions
 SYSTEM_INSTRUCTION = """
@@ -78,9 +100,12 @@ Remember:
 - Be concise while covering all relevant information.
 """
 
+def _make_chroma_client():
+    return chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
+
 # Connect to ChromaDB (optional for local non-RAG runs)
 try:
-    chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    chroma_client = _make_chroma_client()
 except Exception as chroma_error:
     chroma_client = None
     print(f"ChromaDB unavailable; running agent without retrieval tools: {chroma_error}")
@@ -146,9 +171,20 @@ def _build_retrieved_images_content(selected_images: Optional[List[Dict[str, str
         if not source_path:
             continue
 
-        relative_path = source_path.removeprefix(DATASET_PREFIX)
-        image_path = (design_images_dir / relative_path).resolve()
+        # Try GCS first, fall back to local disk
+        from api.utils.gcs_utils import fetch_image_bytes
+        gcs_result = fetch_image_bytes(source_path)
+        if gcs_result:
+            image_data, mime_type = gcs_result
+            parts.append(Part.from_bytes(data=image_data, mime_type=mime_type))
+            continue
 
+        # Local fallback
+        relative_path = source_path.removeprefix(DATASET_PREFIX)
+        image_path = (design_images_dir / relative_path).resolve() if design_images_dir else None
+
+        if image_path is None:
+            continue
         try:
             image_path.relative_to(design_images_dir.resolve())
         except ValueError:
@@ -190,7 +226,7 @@ def generate_image_query_embedding(query: str) -> List[float]:
     proper semantic similarity search.
     """
     try:
-        response = multimodal_model.get_embeddings(
+        response = _get_multimodal_model().get_embeddings(
             contextual_text=query,
             dimension=MULTIMODAL_EMBEDDING_DIMENSION
         )
@@ -356,7 +392,7 @@ def get_image_embedding_from_chroma(source_path: str) -> Optional[List[float]]:
     so we can use its embedding directly instead of generating a text-based one.
     """
     try:
-        client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+        client = _make_chroma_client()
         collection = client.get_collection(name="images-fashion-show-photos")
         results = collection.get(
             where={"source_path": source_path},

@@ -11,13 +11,14 @@ services:
         volumes:
             - .:/app
             - ../../../secrets:/secrets
+            - ~/.config/gcloud:/root/.config/gcloud
             - ../../../persistent-folder:/persistent
             - ../../Dataset Datashack 2026:/design-images
         ports:
             - 9000:9000
         environment:
             DEV: ${DEV:-0}
-            GOOGLE_APPLICATION_CREDENTIALS: /secrets/llm-service-account.json
+            GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
             GCP_PROJECT: ${GCP_PROJECT}
             CHAT_PERSISTENT_DIR: /persistent
             CHROMADB_HOST: llm-rag-chromadb

@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import String, case, cast, func, or_, text as sa_text
 from sqlmodel import Session, select
@@ -25,7 +26,7 @@ app = FastAPI(title="API Server", description="API Server", version="v1")
 DATASET_PREFIX = "Dataset DataShack 2026/"
 
 
-def _resolve_design_images_dir() -> str:
+def _resolve_design_images_dir() -> str | None:
     env_path = os.environ.get("DESIGN_IMAGES_DIR")
     if env_path and Path(env_path).exists():
         return env_path
@@ -35,14 +36,14 @@ def _resolve_design_images_dir() -> str:
         return str(docker_path)
 
     # Local dev fallback: repo root contains "Dataset DataShack 2026"
-    local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
-    if local_repo_dataset.exists():
-        return str(local_repo_dataset)
+    try:
+        local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
+        if local_repo_dataset.exists():
+            return str(local_repo_dataset)
+    except IndexError:
+        pass
 
-    # Keep startup informative if neither Docker mount nor local dataset is present.
-    raise RuntimeError(
-        "Design images directory not found. Set DESIGN_IMAGES_DIR or mount /design-images."
-    )
+    return None
 
 
 @app.on_event("startup")
@@ -51,11 +52,13 @@ def on_startup():
     seed()
 
 
-app.mount(
-    "/design-images",
-    StaticFiles(directory=_resolve_design_images_dir()),
-    name="design-images",
-)
+_design_images_dir = _resolve_design_images_dir()
+if _design_images_dir:
+    app.mount(
+        "/design-images",
+        StaticFiles(directory=_design_images_dir),
+        name="design-images",
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,6 +70,10 @@ app.add_middleware(
 
 
 def _build_image_url(request: Request, source_path: str) -> str:
+    from api.utils.gcs_utils import build_proxy_url
+    proxy = build_proxy_url(str(request.base_url), source_path)
+    if proxy:
+        return proxy
     relative = unicodedata.normalize("NFC", source_path.removeprefix(DATASET_PREFIX))
     return str(request.base_url).rstrip("/") + f"/design-images/{quote(relative, safe='/')}"
 
@@ -269,6 +276,22 @@ async def get_item_cluster(
             for ci in cluster_items
         ],
     }
+
+
+@app.get("/archive/image")
+async def proxy_image(source_path: str = Query(...)):
+    """Proxy an image from GCS, streaming bytes back to the client."""
+    from api.utils.gcs_utils import GCS_BUCKET, _get_gcs_client, source_path_to_gcs_object
+    if not GCS_BUCKET:
+        raise HTTPException(status_code=404, detail="GCS not configured")
+    try:
+        client = _get_gcs_client()
+        blob = client.bucket(GCS_BUCKET).blob(source_path_to_gcs_object(source_path))
+        data = blob.download_as_bytes()
+        content_type = blob.content_type or "image/jpeg"
+        return StreamingResponse(iter([data]), media_type=content_type)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Image not found: {e}")
 
 
 app.include_router(llm_agent_chat.router, prefix="/llm-agent")
