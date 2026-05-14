@@ -15,14 +15,12 @@ from pathlib import Path
 # Vertex AI
 from google import genai
 from google.genai import types
-from google.genai.types import Content, Part, GenerationConfig, ToolConfig
 from google.genai import errors
 from vertexai.vision_models import MultiModalEmbeddingModel
 
 # Langchain
 from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from semantic_splitter import SemanticChunker
-import agent_tools
 
 # Token-based chunking: use cl100k_base (GPT-4 tokenizer) as a good approximation
 # for text-embedding-004 (Google SentencePiece). Chunking defaults are expressed in tokens.
@@ -42,7 +40,8 @@ GENERATIVE_MODEL = "gemini-2.0-flash-001"
 INPUT_FOLDER = "input-datasets"
 OUTPUT_FOLDER = "outputs"
 CHROMADB_HOST = os.environ["CHROMADB_HOST"]
-CHROMADB_PORT = os.environ["CHROMADB_PORT"]
+CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
+CHROMADB_SSL = os.environ.get("CHROMADB_SSL", "false").lower() == "true"
 
 #############################################################################
 #                       Initialize the LLM Client                           #
@@ -133,7 +132,7 @@ def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250, 
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i+batch_size]
 
-        # Retry logic with exponential backoff        pip list | grep langchain
+        # Retry logic with exponential backoff
         retry_count = 0
         while retry_count <= max_retries:
             try:
@@ -257,8 +256,6 @@ def parse_filters(filter_args):
         where[k] = v
     return where
 
-# helper function for metadata filtering
-# TODO: Move retrieve_chunks to agent_tools (or retrieval.py) once agent_tools is activated
 def retrieve_chunks(collection, query_embedding, top_k=10, filters=None, contains=None):
     """
     Single source of truth for retrieval.
@@ -572,7 +569,7 @@ def load(method="recursive-split"):
     chromadb.api.client.SharedSystemClient.clear_system_cache()
 
     # Connect to chroma DB
-    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
 
     # Get a collection object from an existing collection, by name. If it doesn't exist, create it.
     collection_name = f"{method}-collection"
@@ -673,7 +670,7 @@ def load_fashion_show_photos():
     client = None
     for attempt in range(max_retries):
         try:
-            client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+            client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
             print(f"✓ Connected to ChromaDB on attempt {attempt + 1}")
             break
         except (ValueError, ConnectionError) as e:
@@ -775,7 +772,7 @@ def query(method="recursive-split", q=None, top_k=10, filters=None, contains=Non
     print("load()")
 
     # Connect to chroma DB
-    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
 
     # Get a collection object from an existing collection, by name. If it doesn't exist, create it.
     collection_name = f"{method}-collection"
@@ -795,41 +792,6 @@ def query(method="recursive-split", q=None, top_k=10, filters=None, contains=Non
         contains=contains,
     )
 
-    # # 1: Query based on embedding value
-    # results = collection.query(
-    # 	query_embeddings=[query_embedding],
-    # 	n_results=10
-    # )
-    # print("Query:", query)
-    # print("\n\nResults:", results)
-
-    # # 2: Query based on embedding value + metadata filter
-    # results = collection.query(
-    # 	query_embeddings=[query_embedding],
-    # 	n_results=10,
-    # 	where={"book":"The Complete Book of Cheese"}
-    # )
-    # print("Query:", query)
-    # print("\n\nResults:", results)
-
-    # # 3: Query based on embedding value + lexical search filter
-    # search_string = "Italian"
-    # results = collection.query(
-    # 	query_embeddings=[query_embedding],
-    # 	n_results=10,
-    # 	where_document={"$contains": search_string}
-    # )
-    # print("Query:", query)
-    # print("\n\nResults:", results)
-
-    # 4: Query based on embedding value + lexical search filter
-    #search_string = "Italian"
-    #results = collection.query(
-    #    query_embeddings=[query_embedding],
-    #    n_results=10,
-    #    where={"book": "The Complete Book of Cheese"},
-    #    where_document={"$contains": search_string}
-    #)
     print("Query:", query)
     print("Filters:", filters)
     print("\n\nResults:", results)
@@ -854,7 +816,7 @@ def chat(method="recursive-split", q=None, top_k=10, filters=None, contains=None
     print("chat()")
 
     # Connect to chroma DB
-    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
     # Get a collection object from an existing collection, by name. If it doesn't exist, create it.
     collection_name = f"{method}-collection"
 
@@ -872,17 +834,8 @@ def chat(method="recursive-split", q=None, top_k=10, filters=None, contains=None
         filters=filters,
         contains=contains,
     )
-    # Query based on embedding value
-    # results = collection.query(
-    #     query_embeddings=[query_embedding],
-    #     n_results=10
-    # )
     print("\n\nResults:", results)
 
-    print(len(results["documents"][0]))
-    
-    
-    # update input prompt
     docs = results.get("documents", [[]])[0]
     if not docs:
         print("No documents retrieved.")
@@ -896,11 +849,6 @@ def chat(method="recursive-split", q=None, top_k=10, filters=None, contains=None
     Context (retrieved chunks):
     {joined_docs}
     """
-    
-    # INPUT_PROMPT = f"""
-	# {query}
-	# {"\n".join(results["documents"][0])}
-	# """
 
     print("INPUT_PROMPT: ", INPUT_PROMPT)
     response = llm_client.models.generate_content(
@@ -911,96 +859,6 @@ def chat(method="recursive-split", q=None, top_k=10, filters=None, contains=None
     generated_text = response.text
 
     print("LLM Response:", generated_text)
-
-def get(method="recursive-split"):
-    print("get()")
-
-    # Connect to chroma DB
-    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
-    # Get a collection object from an existing collection, by name. If it doesn't exist, create it.
-    collection_name = f"{method}-collection"
-
-    # Get the collection
-    collection = client.get_collection(name=collection_name)
-
-    # Get documents with filters
-    results = collection.get(
-        where={"book": "The Complete Book of Cheese"},
-        limit=10
-    )
-    print("\n\nResults:", results)
-
-
-def agent(method="recursive-split", q=None, top_k=10):
-    """
-    Agentic RAG pipeline for the Ferré archive.
-
-    Step 1 — Tool selection: the LLM receives the user query plus the available
-    retrieval tools and decides which one(s) to call (and with what arguments).
-
-    Step 2 — Execution: the selected tool(s) are executed against ChromaDB.
-
-    Step 3 — Answer generation: the LLM receives the retrieved chunks and
-    produces a final grounded response.
-    """
-    print("agent()")
-
-    # Connect to chroma DB
-    client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
-    collection_name = f"{method}-collection"
-    collection = client.get_collection(name=collection_name)
-
-    user_query = q or "What did Ferré think about creativity and design?"
-    user_prompt_content = Content(
-        role="user",
-        parts=[Part(text=user_query)],
-    )
-    print("User query:", user_query)
-
-    # Step 1: LLM selects which tool(s) to call
-    response = llm_client.models.generate_content(
-        model=GENERATIVE_MODEL,
-        contents=user_prompt_content,
-        config=types.GenerateContentConfig(
-            temperature=0,
-            tools=[agent_tools.ferre_archive_tool],
-            tool_config=types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(mode="any")
-            ),
-        ),
-    )
-    print("LLM tool selection:", response)
-
-    function_calls = [
-        part.function_call
-        for part in response.candidates[0].content.parts
-        if part.function_call
-    ]
-    print("Function calls:", function_calls)
-
-    # Step 2: Execute function calls
-    function_responses = agent_tools.execute_function_calls(
-        function_calls, collection, embed_func=generate_query_embedding, top_k=top_k
-    )
-    if not function_responses:
-        print("No function responses — cannot generate answer.")
-        return
-
-    # Step 3: LLM generates final answer from retrieved chunks
-    final_response = llm_client.models.generate_content(
-        model=GENERATIVE_MODEL,
-        contents=[
-            user_prompt_content,
-            response.candidates[0].content,
-            Content(parts=function_responses),
-        ],
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            tools=[agent_tools.ferre_archive_tool],
-        ),
-    )
-    print("Agent Response:", final_response.text)
-
 
 def main(args=None):
     print("CLI Arguments:", args)
@@ -1027,17 +885,6 @@ def main(args=None):
 
     if args.chat:
         chat(method=args.chunk_type, q=args.q, top_k=args.top_k, filters=filters, contains=args.contains)
-    # if args.query:
-    #     query(method=args.chunk_type)
-
-    # if args.chat:
-    #     chat(method=args.chunk_type)
-
-    if args.get:
-        get(method=args.chunk_type)
-
-    if args.agent:
-        agent(method=args.chunk_type, q=args.q, top_k=args.top_k)
 
 
 if __name__ == "__main__":
@@ -1069,16 +916,6 @@ if __name__ == "__main__":
         "--chat",
         action="store_true",
         help="Chat with LLM",
-    )
-    parser.add_argument(
-        "--get",
-        action="store_true",
-        help="Get documents from vector db",
-    )
-    parser.add_argument(
-        "--agent",
-        action="store_true",
-        help="Chat with LLM Agent",
     )
     parser.add_argument(
         "--embed-fashion-show-photos",
