@@ -28,6 +28,7 @@ from api.utils.agent_orchestrator import (
     CHROMADB_PORT,
 )
 from api.utils.chat_utils import ChatHistoryManager, ChatMessage
+from api.utils.gcs_utils import DATASET_PREFIX, build_proxy_url
 
 router = APIRouter()
 
@@ -39,8 +40,7 @@ item_chat_manager = ChatHistoryManager(model="llm-agent-item")
 item_chat_sessions: Dict[str, Any] = {}
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-# Must match the prefix used in source_path (DB and ChromaDB metadata)
-DATASET_PREFIX = "Dataset DataShack 2026/"
+# DATASET_PREFIX and build_proxy_url are imported from gcs_utils (shared constants)
 
 # Fetch more image candidates than the final count to enable metadata-based re-ranking
 IMAGE_CANDIDATES_COUNT = 15
@@ -63,7 +63,6 @@ class ItemChatMessage(BaseModel):
 # ── Image search helpers (general chat) ───────────────────────────────────────
 
 def _build_image_url(request: Request, source_path: str) -> str:
-    from api.utils.gcs_utils import build_proxy_url
     proxy = build_proxy_url(str(request.base_url), source_path)
     if proxy:
         return proxy

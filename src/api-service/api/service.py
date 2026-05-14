@@ -1,6 +1,7 @@
 import json
 import os
 import unicodedata
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
@@ -16,47 +17,30 @@ import api.models.fashion_item  # noqa: F401 — registers table with SQLModel m
 from api.models.fashion_item import FashionItem
 from api.routers import llm_agent_chat
 from api.seeds.seed import seed
+from api.utils.gcs_utils import DATASET_PREFIX, build_proxy_url, resolve_design_images_dir
 
-app = FastAPI(title="API Server", description="API Server", version="v1")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    seed()
+    yield
+
+
+app = FastAPI(title="API Server", description="API Server", version="v1", lifespan=lifespan)
 
 # The source_path stored in the DB starts with this prefix (e.g.
 # "Dataset DataShack 2026/ALTA MODA 1986-87 FW/...").
 # The Docker volume mounts the "Dataset DataShack 2026" folder directly at
 # /design-images, so this prefix must be stripped when building image URLs.
-DATASET_PREFIX = "Dataset DataShack 2026/"
+# DATASET_PREFIX is imported from gcs_utils (shared with the agent orchestrator).
 
 
-def _resolve_design_images_dir() -> str | None:
-    env_path = os.environ.get("DESIGN_IMAGES_DIR")
-    if env_path and Path(env_path).exists():
-        return env_path
-
-    docker_path = Path("/design-images")
-    if docker_path.exists():
-        return str(docker_path)
-
-    # Local dev fallback: repo root contains "Dataset DataShack 2026"
-    try:
-        local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
-        if local_repo_dataset.exists():
-            return str(local_repo_dataset)
-    except IndexError:
-        pass
-
-    return None
-
-
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
-    seed()
-
-
-_design_images_dir = _resolve_design_images_dir()
+_design_images_dir = resolve_design_images_dir()
 if _design_images_dir:
     app.mount(
         "/design-images",
-        StaticFiles(directory=_design_images_dir),
+        StaticFiles(directory=str(_design_images_dir)),
         name="design-images",
     )
 
@@ -70,7 +54,6 @@ app.add_middleware(
 
 
 def _build_image_url(request: Request, source_path: str) -> str:
-    from api.utils.gcs_utils import build_proxy_url
     proxy = build_proxy_url(str(request.base_url), source_path)
     if proxy:
         return proxy

@@ -11,15 +11,17 @@ services:
         volumes:
             - .:/app
             - ../../../secrets:/secrets
-            - ~/.config/gcloud:/root/.config/gcloud
+            - ~/.config/gcloud:/home/app/.config/gcloud
             - ../../../persistent-folder:/persistent
             - ../../Dataset Datashack 2026:/design-images
         ports:
             - 9000:9000
         environment:
             DEV: ${DEV:-0}
-            GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+            GOOGLE_APPLICATION_CREDENTIALS: /home/app/.config/gcloud/application_default_credentials.json
             GCP_PROJECT: ${GCP_PROJECT}
+            GCS_BUCKET: ${GCS_BUCKET}
+            GOOGLE_API_KEY: ${GOOGLE_API_KEY}
             CHAT_PERSISTENT_DIR: /persistent
             CHROMADB_HOST: llm-rag-chromadb
             CHROMADB_PORT: 8000
