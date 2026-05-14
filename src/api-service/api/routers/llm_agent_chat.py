@@ -26,6 +26,7 @@ from api.utils.agent_orchestrator import (
     generate_final_answer,
     CHROMADB_HOST,
     CHROMADB_PORT,
+    CHROMADB_SSL,
 )
 from api.utils.chat_utils import ChatHistoryManager, ChatMessage
 from api.utils.gcs_utils import DATASET_PREFIX, build_proxy_url
@@ -84,7 +85,7 @@ def _search_similar_images(
     If query_embedding is provided (e.g. retrieved from a shown image), it is used
     directly instead of generating a new text-based embedding from query.
     """
-    chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
     collection = chroma_client.get_collection(name="images-fashion-show-photos")
     if query_embedding is None:
         query_embedding = generate_image_query_embedding(query)

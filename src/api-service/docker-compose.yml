@@ -23,8 +23,9 @@ services:
             GCS_BUCKET: ${GCS_BUCKET}
             GOOGLE_API_KEY: ${GOOGLE_API_KEY}
             CHAT_PERSISTENT_DIR: /persistent
-            CHROMADB_HOST: llm-rag-chromadb
-            CHROMADB_PORT: 8000
+            CHROMADB_HOST: ${CHROMADB_HOST:-llm-rag-chromadb}
+            CHROMADB_PORT: ${CHROMADB_PORT:-8000}
+            CHROMADB_SSL: ${CHROMADB_SSL:-false}
             POSTGRES_HOST: llm-rag-postgres
             POSTGRES_PORT: 5432
             POSTGRES_DB: ${POSTGRES_DB:-ragdb}
