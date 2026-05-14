@@ -7,6 +7,17 @@ import { ArrowLeft, Search } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Input } from "@/components/ui/input";
+import { ItemDetailModal } from "@/components/ItemDetailModal";
+import {
+  startChat,
+  continueChat,
+  startItemChat,
+  continueItemChat,
+  ChatMessage as APIChatMessage,
+  ChatSource,
+} from "@/lib/api";
+import { renderWithCitations } from "@/lib/chat-utils";
+import { ConversationImageItem } from "@/lib/types";
 
 function ChatImageThumb({
   src,
@@ -33,20 +44,6 @@ function ChatImageThumb({
     </button>
   );
 }
-import { ItemDetailModal } from "@/components/ItemDetailModal";
-import {
-  startChat,
-  continueChat,
-  startItemChat,
-  continueItemChat,
-  ChatMessage as APIChatMessage,
-  ChatSource,
-} from "@/lib/api";
-
-interface ConversationImageItem {
-  source_path: string;
-  image_url: string;
-}
 
 interface ConversationPopupProps {
   initialQuery: string;
@@ -55,57 +52,6 @@ interface ConversationPopupProps {
   itemSourcePath?: string;
 }
 
-
-// Parse citation markers and make them interactive
-function renderWithCitations(
-  text: string,
-  onCitationClick: (num: number) => void,
-  activeCitation: number | null
-) {
-  const parts: (string | JSX.Element)[] = [];
-  // Updated regex to match [1], [1, 2], [1,2], etc.
-  const regex = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(text)) !== null) {
-    // Add text before citation
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
-
-    // Parse multiple citation numbers from the match
-    const citationNumbers = match[1]
-      .split(',')
-      .map(n => n.trim())
-      .map(n => parseInt(n, 10));
-
-    // Create buttons for each citation number
-    const citationButtons = citationNumbers.map((num, idx) => (
-      <button
-        key={`citation-${match!.index}-${idx}`}
-        onClick={() => onCitationClick(num)}
-        className={`inline font-semibold text-xs cursor-pointer transition-colors mx-0.5 ${
-          activeCitation === num
-            ? "text-blue-600"
-            : "text-blue-500 hover:text-blue-700 hover:underline"
-        }`}
-      >
-        [{num}]{idx < citationNumbers.length - 1 ? ', ' : ''}
-      </button>
-    ));
-
-    parts.push(...citationButtons);
-    lastIndex = match.index + match[0].length;
-  }
-
-  // Add remaining text
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-
-  return parts;
-}
 
 export function ConversationPopup({ initialQuery, onClose, itemSourcePath }: ConversationPopupProps) {
   const [chatId, setChatId] = useState<string | null>(null);
@@ -162,7 +108,7 @@ export function ConversationPopup({ initialQuery, onClose, itemSourcePath }: Con
     };
 
     initChat();
-  }, [initialQuery]);
+  }, [initialQuery, itemSourcePath]);
 
   const handleSubmit = async () => {
     if (!inputValue.trim() || !chatId || isLoading) return;

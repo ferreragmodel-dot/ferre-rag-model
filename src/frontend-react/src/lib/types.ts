@@ -20,13 +20,6 @@ export interface ConversationImageItem {
   image_url: string;
 }
 
-export interface ConversationResponse {
-  query: string;
-  response: string;
-  images: ConversationImageItem[];
-  tags: string[];
-}
-
 export interface LandingFeedResponse {
   items: ArchiveImageItem[];
   pagination: {

@@ -17,48 +17,12 @@ import {
   ClusterItem,
 } from "@/lib/api";
 import { ArchiveItemDetailResponse } from "@/lib/types";
+import { renderWithCitations } from "@/lib/chat-utils";
 
 interface ItemDetailModalProps {
   sourcePath: string;
   imageUrl?: string;
   onClose: () => void;
-}
-
-function renderWithCitations(
-  text: string,
-  onCitationClick: (num: number) => void,
-  activeCitation: number | null
-) {
-  const parts: (string | JSX.Element)[] = [];
-  const regex = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
-    const citationNumbers = match[1].split(",").map((n) => parseInt(n.trim(), 10));
-    const citationButtons = citationNumbers.map((num, idx) => (
-      <button
-        key={`citation-${match!.index}-${idx}`}
-        onClick={() => onCitationClick(num)}
-        className={`inline font-semibold text-xs cursor-pointer transition-colors mx-0.5 ${
-          activeCitation === num
-            ? "text-blue-600"
-            : "text-blue-500 hover:text-blue-700 hover:underline"
-        }`}
-      >
-        [{num}]{idx < citationNumbers.length - 1 ? ", " : ""}
-      </button>
-    ));
-    parts.push(...citationButtons);
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-  return parts;
 }
 
 export function ItemDetailModal({ sourcePath, imageUrl, onClose }: ItemDetailModalProps) {
