@@ -16,6 +16,7 @@ import vertexai
 from vertexai.vision_models import MultiModalEmbeddingModel
 
 from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls, image_search_tool
+from api.utils.gcs_utils import fetch_image_bytes, resolve_design_images_dir
 
 # Setup
 GCP_PROJECT = os.environ["GCP_PROJECT"]
@@ -133,27 +134,12 @@ def create_chat_session(past_history: List[Content] = None) -> AgentChatSession:
     return AgentChatSession(history=list(past_history) if past_history else [])
 
 
-def _resolve_design_images_dir() -> Path | None:
-    env_path = os.environ.get("DESIGN_IMAGES_DIR")
-    if env_path and Path(env_path).exists():
-        return Path(env_path)
-
-    docker_path = Path("/design-images")
-    if docker_path.exists():
-        return docker_path
-
-    local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
-    if local_repo_dataset.exists():
-        return local_repo_dataset
-
-    return None
-
 
 def _build_retrieved_images_content(selected_images: Optional[List[Dict[str, str]]]) -> Optional[Content]:
     if not selected_images:
         return None
 
-    design_images_dir = _resolve_design_images_dir()
+    design_images_dir = resolve_design_images_dir()
     if design_images_dir is None:
         return None
 
@@ -172,7 +158,6 @@ def _build_retrieved_images_content(selected_images: Optional[List[Dict[str, str
             continue
 
         # Try GCS first, fall back to local disk
-        from api.utils.gcs_utils import fetch_image_bytes
         gcs_result = fetch_image_bytes(source_path)
         if gcs_result:
             image_data, mime_type = gcs_result
@@ -568,22 +553,6 @@ def generate_final_answer(
             status_code=500,
             detail=f"Failed to generate response: {str(e)}",
         )
-
-
-def generate_chat_response(session: AgentChatSession, message: Dict) -> tuple:
-    """
-    Convenience wrapper: retrieve_text_chunks → generate_final_answer.
-
-    Preserves the original interface without image metadata context injection.
-    Use retrieve_text_chunks + generate_final_answer directly when image
-    context integration is needed.
-    """
-    user_content, tool_call_content, function_responses_content, sources = retrieve_text_chunks(
-        session, message
-    )
-    return generate_final_answer(
-        session, user_content, tool_call_content, function_responses_content, sources
-    )
 
 
 def rebuild_chat_session(chat_history: List[Dict], history_dir: str = None) -> AgentChatSession:

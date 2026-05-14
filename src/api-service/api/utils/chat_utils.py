@@ -103,7 +103,6 @@ class ChatHistoryManager:
         # Process messages to save images separately
         for message in chat_to_save["messages"]:
             if "image" in message and message["image"] is not None:
-                # print("image:",message["image"])
                 # Save image and replace with path
                 image_path = self._save_image(
                     chat_to_save["chat_id"], message["message_id"], message["image"]

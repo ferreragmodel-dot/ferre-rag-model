@@ -7,10 +7,37 @@ fall back to local static file serving.
 import os
 import mimetypes
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 DATASET_PREFIX = "Dataset DataShack 2026/"
 GCS_BUCKET = os.environ.get("GCS_BUCKET")
+
+
+def resolve_design_images_dir() -> Optional[Path]:
+    """Return the local path to the design images directory, or None if not found.
+
+    Resolution order:
+    1. DESIGN_IMAGES_DIR env var (explicit override)
+    2. /design-images (Docker volume mount path)
+    3. Repo root / "Dataset DataShack 2026" (local dev fallback)
+    """
+    env_path = os.environ.get("DESIGN_IMAGES_DIR")
+    if env_path and Path(env_path).exists():
+        return Path(env_path)
+
+    docker_path = Path("/design-images")
+    if docker_path.exists():
+        return docker_path
+
+    try:
+        local_repo_dataset = Path(__file__).resolve().parents[3] / "Dataset DataShack 2026"
+        if local_repo_dataset.exists():
+            return local_repo_dataset
+    except IndexError:
+        pass
+
+    return None
 
 
 @lru_cache(maxsize=1)
@@ -32,6 +59,13 @@ def _get_gcs_client():
         creds = google.oauth2.credentials.Credentials(token=token)
     else:
         creds, _ = google.auth.default()
+        # The ADC file has quota_project_id set, which makes the SDK send
+        # x-goog-user-project on every request. GCS then tries to bill
+        # ferre-rag-model, which has no billing account → 403. The bucket's
+        # owning project has billing and is billed directly when no
+        # x-goog-user-project header is present, so we clear it here.
+        if hasattr(creds, "with_quota_project"):
+            creds = creds.with_quota_project(None)
 
     return storage.Client(project=project, credentials=creds)
 
@@ -39,14 +73,6 @@ def _get_gcs_client():
 def source_path_to_gcs_object(source_path: str) -> str:
     """Strip the local dataset prefix to get the GCS object name."""
     return source_path.removeprefix(DATASET_PREFIX)
-
-
-def build_signed_url(source_path: str) -> Optional[str]:
-    """
-    Returns None — signed URLs require a service account key.
-    Use the /archive/image proxy endpoint instead.
-    """
-    return None
 
 
 def build_proxy_url(base_url: str, source_path: str) -> Optional[str]:
