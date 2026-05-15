@@ -1,6 +1,6 @@
 # Gianfranco Ferré Archive
 
-This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfranco Ferré archive, using a vector database and a Large Language Model (LLM). The system ingests Ferré PDFs, chunks them, generates embeddings, stores them in ChromaDB, and enables search and chat over the archive through a web interface.
+This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfranco Ferré archive, using a vector database and a Large Language Model (LLM). The system ingests Ferré archive content including PDFs and images, chunks them, generates embeddings, stores them in ChromaDB, and enables search and chat over the archive through a web interface.
 
 <img src="images/ferre.png" width="800">
 
