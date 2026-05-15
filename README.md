@@ -222,6 +222,8 @@ python cli.py --load-fashion-show-photos
 
 One `.jsonl` per season is written to `outputs/`. All seasons load into a single ChromaDB collection `images-fashion-show-photos` with season preserved as metadata on each document.
 
+The image metadata generation workflow is documented in `src/vector-db/metadata/images_metadata/README.md`. Its final metadata artifact is loaded by `python cli.py --load-fashion-show-photos` and copied into the api-service seed data for Postgres.
+
 ### Query / chat (debugging)
 
 ```bash

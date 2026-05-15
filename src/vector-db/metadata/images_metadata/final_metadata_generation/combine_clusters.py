@@ -9,9 +9,9 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent
 
-EMBEDDING_FILE = BASE_DIR / "../generated_metadata/missing_pdf_clusters_registry_reclustered_fixed_paths.jsonl"
-GROUNDED_FILE = BASE_DIR / "../grounded_metadata/grounded_outfit_dhash_clusters_registry_final_May.json"
-GROUNDED_DIR = BASE_DIR / "../grounded_metadata/grounded_outfit"
+EMBEDDING_FILE = BASE_DIR / "../missing_pdf_clustering/missing_pdf_clusters_registry_final.jsonl"
+GROUNDED_FILE = BASE_DIR / "../grounded_clustering/grounded_outfit_dhash_clusters_registry_final.json"
+GROUNDED_DIR = BASE_DIR / "../grounded_clustering/grounded_outfit"
 OUTPUT_FILE = BASE_DIR / "all_outfit_clusters_registry_final.jsonl"
 
 SEASON_FILES = [

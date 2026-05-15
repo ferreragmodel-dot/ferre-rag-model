@@ -57,8 +57,8 @@ def normalize_season_from_filename(filename: str) -> str:
     else:
         return year_part
 
-input_registry = "grounded_outfit_dhash_clusters_registry_fixed_paths.json"
-output_registry = "grounded_outfit_dhash_clusters_registry_final_May.json"
+input_registry = "grounded_outfit_dhash_clusters_registry.json"
+output_registry = "grounded_outfit_dhash_clusters_registry_final.json"
 
 
 def build_pdf_status_map():

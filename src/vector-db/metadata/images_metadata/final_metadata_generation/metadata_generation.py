@@ -4,7 +4,7 @@ Generate final Ferré image metadata from the combined cluster registry.
 
 Key behavior
 ------------
-- Reads all_outfit_clusters_registry.jsonl
+- Reads all_outfit_clusters_registry_final.jsonl
 - For pdf_status in {"available", "incomplete"}:
     * sends all existing cluster images + matched PDF text to the LLM
     * uses merged archive_keywords + external_seed_keywords
@@ -53,11 +53,11 @@ from google.genai import types
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(__file__).resolve().parents[5]
 
-DEFAULT_CLUSTERS = BASE_DIR / "all_outfit_clusters_registry.jsonl"
+DEFAULT_CLUSTERS = BASE_DIR / "all_outfit_clusters_registry_final.jsonl"
 DEFAULT_OUTPUT = BASE_DIR / "generated_image_metadata_final.jsonl"
 DEFAULT_SKIPPED_OUTPUT = BASE_DIR / "skipped_images.jsonl"
 DEFAULT_ONTOLOGY = (BASE_DIR / "../fashion_ontology/ferre_retrieval_ontology.json").resolve()
-DEFAULT_GROUNDED_DIR = (BASE_DIR / "../grounded_metadata/grounded_outfit").resolve()
+DEFAULT_GROUNDED_DIR = (BASE_DIR / "../grounded_clustering/grounded_outfit").resolve()
 
 DEFAULT_MODEL = "gemini-2.0-flash-001"
 DEFAULT_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
@@ -659,7 +659,7 @@ def cluster_to_output_rows(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate final Ferré image metadata from cluster registry.")
-    parser.add_argument("--clusters", default=str(DEFAULT_CLUSTERS), help="Path to all_outfit_clusters_registry.jsonl")
+    parser.add_argument("--clusters", default=str(DEFAULT_CLUSTERS), help="Path to all_outfit_clusters_registry_final.jsonl")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="Output JSONL path")
     parser.add_argument("--skipped-output", default=str(DEFAULT_SKIPPED_OUTPUT), help="Skipped images JSONL path")
     parser.add_argument("--ontology", default=str(DEFAULT_ONTOLOGY), help="Path to ferre_retrieval_ontology.json")

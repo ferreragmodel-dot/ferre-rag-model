@@ -49,7 +49,7 @@ from sklearn.metrics.pairwise import cosine_distances
 
 DEFAULT_INPUT = "embeddings_missing_from_grounded.json"
 DEFAULT_CLUSTER_OUTPUT = "missing_pdf_clusters_registry_reclustered.jsonl"
-DEFAULT_MAP_OUTPUT = "missing_pdf_image_to_cluster_map_reclustered.json"
+DEFAULT_MAP_OUTPUT = "missing_pdf_cluster_audit_map.json"
 
 
 def load_json_array(path: str) -> List[Dict[str, Any]]:

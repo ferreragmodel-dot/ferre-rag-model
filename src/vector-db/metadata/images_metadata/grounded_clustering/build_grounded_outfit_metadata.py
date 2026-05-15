@@ -1375,4 +1375,4 @@ def main() -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 
-#docker compose run --rm --entrypoint /bin/bash llm-rag-cli -lc "cd /app && source /.venv/bin/activate && python metadata/images_metadata/grounded_metadata/build_grounded_outfit_metadata.py --dataset-root-dir 'input-datasets/ferre-designs/Dataset DataShack 2026' --cache-hashes --global-image-match --merge-image-maps-output 'metadata/images_metadata/grounded_metadata/grounded_image_map/all_collections_merged.json'"
+#docker compose run --rm --entrypoint /bin/bash llm-rag-cli -lc "cd /app && source /.venv/bin/activate && python metadata/images_metadata/grounded_clustering/build_grounded_outfit_metadata.py --dataset-root-dir 'input-datasets/ferre-designs/Dataset DataShack 2026' --cache-hashes --global-image-match --merge-image-maps-output 'metadata/images_metadata/grounded_clustering/grounded_image_map/all_collections_merged.json'"

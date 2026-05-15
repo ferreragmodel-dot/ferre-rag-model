@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, List, Set
 DEFAULT_OUTPUTS_DIR = Path(__file__).resolve().parents[3] / "outputs"
 DEFAULT_GROUNDED_JSON = (
     Path(__file__).resolve().parents[1]
-    / "grounded_metadata"
+    / "grounded_clustering"
     / "grounded_image_map"
     / "all_collections_merged_cleaned.json"
 )

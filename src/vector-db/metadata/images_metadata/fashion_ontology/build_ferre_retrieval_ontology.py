@@ -97,7 +97,7 @@ REPO_ROOT = find_repo_root(BASE_DIR)
 
 DEFAULT_ARCHIVE_INPUT = (
     IMAGES_METADATA_DIR
-    / "grounded_metadata"
+    / "grounded_clustering"
     / "grounded_image_map"
     / "all_collections_merged_cleaned.json"
 )

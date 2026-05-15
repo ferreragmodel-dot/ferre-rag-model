@@ -202,4 +202,4 @@ def main() -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 
-# docker compose run --rm --entrypoint /bin/bash llm-rag-cli -lc "cd /app && source /.venv/bin/activate && python metadata/images_metadata/grounded_metadata/clean_grounded_image_map.py"
+# docker compose run --rm --entrypoint /bin/bash llm-rag-cli -lc "cd /app && source /.venv/bin/activate && python metadata/images_metadata/grounded_clustering/clean_grounded_image_map.py"

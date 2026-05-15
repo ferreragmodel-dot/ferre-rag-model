@@ -538,15 +538,15 @@ def load(method="recursive-split"):
 def load_fashion_show_photos():
     """Load fashion show photo embeddings into ChromaDB as a single collection.
 
-    Each record is enriched with metadata from generated_image_metadata_fixed_paths.jsonl,
+    Each record is enriched with metadata from generated_image_metadata_final.jsonl,
     joined on embedding['path'] == metadata['source_path'].
     """
     print("load_fashion_show_photos()")
 
     COLLECTION_NAME = "images-fashion-show-photos"
     METADATA_FILE = os.path.join(
-        "metadata", "images_metadata", "metadata_generation_final",
-        "generated_image_metadata_fixed_paths.jsonl"
+        "metadata", "images_metadata", "final_metadata_generation",
+        "generated_image_metadata_final.jsonl"
     )
 
     # Load rich metadata keyed by NFC-normalized source_path for O(1) lookup.
