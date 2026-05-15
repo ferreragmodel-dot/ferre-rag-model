@@ -27,10 +27,8 @@ from __future__ import annotations
 import argparse
 import io
 import json
-from operator import inv
 import os
 import re
-import sys
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -440,8 +438,7 @@ def cleanup_fields(fields: Dict[str, Optional[str]], season_folder_name: str) ->
                 fields["season"] = "Fall-Winter"
                 fields["label"] = "\n".join(lns[1:]).strip() or None
 
-    # SIZE vs INVENTORY semantics (your desired meaning):
-    # if inventory is digits and size is text like "made to measure", swap them
+    # Inventory should hold numeric archive ids; size should hold text such as "made to measure".
     inv = (fields.get("inventory") or "").strip()
     sz = (fields.get("size") or "").strip()
     if inv and re.fullmatch(r"\d+", inv) and sz and re.search(r"[A-Za-z]", sz):

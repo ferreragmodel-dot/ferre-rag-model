@@ -773,7 +773,6 @@ def main(args=None):
     if args.load_fashion_show_photos:
         load_fashion_show_photos()
 
-     # wire the CLI flags
     filters = parse_filters(args.filter)
     if args.query:
         query(method=args.chunk_type, q=args.q, top_k=args.top_k, filters=filters, contains=args.contains)
