@@ -1,9 +1,7 @@
 import json
 import os
-import unicodedata
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -17,7 +15,7 @@ import api.models.fashion_item  # noqa: F401 — registers table with SQLModel m
 from api.models.fashion_item import FashionItem
 from api.routers import llm_agent_chat
 from api.seeds.seed import seed
-from api.utils.gcs_utils import DATASET_PREFIX, build_proxy_url, resolve_design_images_dir
+from api.utils.gcs_utils import build_image_url, resolve_design_images_dir
 
 
 @asynccontextmanager
@@ -28,13 +26,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="API Server", description="API Server", version="v1", lifespan=lifespan)
-
-# The source_path stored in the DB starts with this prefix (e.g.
-# "Dataset DataShack 2026/ALTA MODA 1986-87 FW/...").
-# The Docker volume mounts the "Dataset DataShack 2026" folder directly at
-# /design-images, so this prefix must be stripped when building image URLs.
-# DATASET_PREFIX is imported from gcs_utils (shared with the agent orchestrator).
-
 
 _design_images_dir = resolve_design_images_dir()
 if _design_images_dir:
@@ -51,14 +42,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def _build_image_url(request: Request, source_path: str) -> str:
-    proxy = build_proxy_url(str(request.base_url), source_path)
-    if proxy:
-        return proxy
-    relative = unicodedata.normalize("NFC", source_path.removeprefix(DATASET_PREFIX))
-    return str(request.base_url).rstrip("/") + f"/design-images/{quote(relative, safe='/')}"
 
 
 @app.get("/")
@@ -185,7 +168,7 @@ async def get_landing_feed(
             {
                 "id": item.id,
                 "title": Path(item.source_path).stem.replace("_", " "),
-                "image_url": _build_image_url(request, item.source_path),
+                "image_url": build_image_url(str(request.base_url), item.source_path),
                 "source_path": item.source_path,
             }
             for item in items
@@ -220,7 +203,7 @@ async def get_archive_item_detail(
 
     return {
         "id": item.id,
-        "image_url": _build_image_url(request, item.source_path),
+        "image_url": build_image_url(str(request.base_url), item.source_path),
         "metadata": item.model_dump(),
     }
 
@@ -254,7 +237,7 @@ async def get_item_cluster(
         "items": [
             {
                 "source_path": ci.source_path,
-                "image_url": _build_image_url(request, ci.source_path),
+                "image_url": build_image_url(str(request.base_url), ci.source_path),
             }
             for ci in cluster_items
         ],

@@ -4,11 +4,13 @@ GCS utilities for image byte fetching and proxy URL generation.
 GCS_BUCKET env var must be set. If not set, functions return None and callers
 fall back to local static file serving.
 """
-import os
 import mimetypes
+import os
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote, urlencode
 
 DATASET_PREFIX = "Dataset DataShack 2026/"
 GCS_BUCKET = os.environ.get("GCS_BUCKET")
@@ -79,8 +81,20 @@ def build_proxy_url(base_url: str, source_path: str) -> Optional[str]:
     """Return a backend proxy URL for the given source_path, or None if GCS not configured."""
     if not GCS_BUCKET:
         return None
-    from urllib.parse import urlencode
     return base_url.rstrip("/") + "/archive/image?" + urlencode({"source_path": source_path})
+
+
+def build_image_url(base_url: str, source_path: str) -> str:
+    """Return the best available URL for an archive image.
+
+    Prefers the GCS proxy endpoint; falls back to the local static-file URL
+    when GCS is not configured.
+    """
+    proxy = build_proxy_url(base_url, source_path)
+    if proxy:
+        return proxy
+    relative = unicodedata.normalize("NFC", source_path.removeprefix(DATASET_PREFIX))
+    return base_url.rstrip("/") + f"/design-images/{quote(relative, safe='/')}"
 
 
 def fetch_image_bytes(source_path: str) -> Optional[tuple[bytes, str]]:

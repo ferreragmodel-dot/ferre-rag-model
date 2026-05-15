@@ -1,4 +1,5 @@
 import os
+import google.auth
 from typing import Dict, Any, List, Optional
 from fastapi import HTTPException
 import base64
@@ -7,7 +8,6 @@ from pathlib import Path
 import traceback
 import chromadb
 
-# Vertex AI
 from google import genai
 from google.genai import types
 from google.genai.types import Content, Part
@@ -16,7 +16,7 @@ import vertexai
 from vertexai.vision_models import MultiModalEmbeddingModel
 
 from api.utils.retrieval_tools import ferre_archive_tool, execute_function_calls, image_search_tool
-from api.utils.gcs_utils import fetch_image_bytes, resolve_design_images_dir
+from api.utils.gcs_utils import DATASET_PREFIX, fetch_image_bytes, resolve_design_images_dir
 
 # Setup
 GCP_PROJECT = os.environ["GCP_PROJECT"]
@@ -28,10 +28,6 @@ GENERATIVE_MODEL = os.environ.get("GENERATIVE_MODEL", "gemini-2.0-flash")
 CHROMADB_HOST = os.environ["CHROMADB_HOST"]
 CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 CHROMADB_SSL = os.environ.get("CHROMADB_SSL", "false").lower() == "true"
-
-#############################################################################
-#                       Initialize the LLM Client                           #
-import google.auth
 
 _google_api_key = os.environ.get("GOOGLE_API_KEY")
 if _google_api_key:
@@ -47,7 +43,6 @@ else:
         location=GCP_LOCATION,
         credentials=_credentials,
     )
-#############################################################################
 
 # Initialize Vertex AI for multimodal embeddings (lazy-loaded on first use)
 vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
@@ -114,8 +109,6 @@ COLLECTION_NAME = "semantic-split-collection"
 
 # Initialize agent chat sessions
 chat_sessions: Dict[str, "AgentChatSession"] = {}
-
-DATASET_PREFIX = "Dataset DataShack 2026/"
 
 
 class AgentChatSession:
@@ -244,26 +237,8 @@ def _build_user_content(message: Dict) -> Content:
                 or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
             )
         )
-    elif message.get("image_path"):
-        image_path = os.path.join("chat-history", "llm-agent", message["image_path"])
-        with Path(image_path).open("rb") as f:
-            image_bytes = f.read()
-        mime_type = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".gif": "image/gif",
-        }.get(Path(image_path).suffix.lower(), "image/jpeg")
-        user_parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
-        user_parts.append(
-            Part.from_text(
-                text=message.get("content")
-                or "Describe what you see in this image in the context of Gianfranco Ferre fashion archive research"
-            )
-        )
-    else:
-        if message.get("content"):
-            user_parts.append(Part.from_text(text=message["content"]))
+    elif message.get("content"):
+        user_parts.append(Part.from_text(text=message["content"]))
 
     if not user_parts:
         raise ValueError("Message must contain either text content or image")

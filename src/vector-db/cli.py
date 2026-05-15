@@ -1,22 +1,21 @@
 import os
 import argparse
-import pandas as pd
+import re
+import glob
 import json
 import time
-import glob
 import hashlib
+import unicodedata
 import chromadb
 import fitz  # PyMuPDF for PDF text extraction
-import base64
-import re
 import tiktoken
+import pandas as pd
 from pathlib import Path
 
-# Vertex AI
 from google import genai
 from google.genai import types
 from google.genai import errors
-from vertexai.vision_models import MultiModalEmbeddingModel
+from vertexai.vision_models import Image, MultiModalEmbeddingModel
 
 # Langchain
 from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
@@ -43,13 +42,9 @@ CHROMADB_HOST = os.environ["CHROMADB_HOST"]
 CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 CHROMADB_SSL = os.environ.get("CHROMADB_SSL", "false").lower() == "true"
 
-#############################################################################
-#                       Initialize the LLM Client                           #
-llm_client = genai.Client(
-    vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
-#############################################################################
+llm_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 
-# Initialize the GenerativeModel with specific system instructions
+# System instruction for the CLI chat() command
 SYSTEM_INSTRUCTION = """
 You are an AI assistant specialized in Gianfranco Ferré and fashion archive research. Your responses are based solely on the information provided in the text chunks given to you. Do not use any external knowledge or make assumptions beyond what is explicitly stated in these chunks.
 
@@ -87,17 +82,7 @@ for candidate in ("ferre_mappings.json", "ferre_mappings_llm.json",
             ferre_mappings = {}
 
 def generate_query_embedding(query):
-    """
-    Generate an embedding vector for a single query string.
-
-    Args:
-        query (str): Input text query.
-
-    Returns:
-        List[float]:
-            Embedding vector of shape (EMBEDDING_DIMENSION,).
-    """
-
+    """Generate an embedding vector for a single query string."""
     kwargs = {
         "output_dimensionality": EMBEDDING_DIMENSION
     }
@@ -110,23 +95,7 @@ def generate_query_embedding(query):
 
 
 def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250, max_retries=5, retry_delay=5):
-    """
-    Generate embeddings for a list of text chunks.
-
-    Args:
-        chunks (List[str]): Input text strings.
-        dimensionality (int): Size of each embedding vector.
-        batch_size (int): Max texts per API call.
-        max_retries (int): Max retry attempts on API failure.
-        retry_delay (int): Initial retry delay (seconds).
-
-    Returns:
-        List[List[float]]: 
-            One embedding per input chunk.
-            Shape: (len(chunks), dimensionality)
-    """
-
-    # Max batch size is 250 for Vertex AI
+    """Generate embeddings for a list of text chunks. Max batch size 250 (Vertex AI limit)."""
     all_embeddings = []
 
     for i in range(0, len(chunks), batch_size):
@@ -163,26 +132,11 @@ def generate_text_embeddings(chunks, dimensionality: int = 256, batch_size=250, 
 
 
 def load_text_embeddings(df, collection, batch_size=500):
+    """Load chunk embeddings and metadata into a ChromaDB collection.
+
+    df must have 'chunk', 'embedding', and 'doc'/'book' columns.
+    IDs are sha256-hashed from the source name. Metadata is enriched from ferre_mappings if loaded.
     """
-    Load chunk embeddings, text, and metadata from a DataFrame
-    into a vector database collection in batches.
-
-    Args:
-        df (pd.DataFrame):
-            Must contain:
-                - 'chunk' (str): text content
-                - 'embedding' (List[float]): embedding vectors
-                - 'doc' or 'book' (str): source identifier for metadata
-        collection:
-            Target vector database collection (must support .add()).
-        batch_size (int): Number of items to insert per batch.
-
-    Behavior:
-        - Generates unique IDs using a hashed document/book prefix.
-        - Builds per-chunk metadata (merging ferre_mappings if available).
-        - Inserts ids, documents, embeddings, and metadata into the collection.
-    """
-
     # Generate ids
     df["id"] = df.index.astype(str)
 
@@ -191,14 +145,11 @@ def load_text_embeddings(df, collection, batch_size=500):
     if key_col is None:
         raise ValueError("Dataframe must contain either 'doc' or 'book' column for metadata mapping")
 
-    # Create hashed prefix from doc/book name
     hashed_keys = df[key_col].astype(str).apply(lambda x: hashlib.sha256(x.encode()).hexdigest()[:16])
     df["id"] = hashed_keys + "-" + df["id"]
 
-    # Process data in batches
     total_inserted = 0
     for i in range(0, df.shape[0], batch_size):
-        # Create a copy of the batch and reset the index
         batch = df.iloc[i:i+batch_size].copy().reset_index(drop=True)
 
         ids = batch["id"].tolist()
@@ -234,13 +185,8 @@ def load_text_embeddings(df, collection, batch_size=500):
     print(
         f"Finished inserting {total_inserted} items into collection '{collection.name}'")
     
-# helper function for metadata filtering
 def parse_filters(filter_args):
-    """
-    Parse repeatable CLI args like:
-      --filter type=lesson --filter doc="Notes_White shirt"
-    into a dict for Chroma 'where='.
-    """
+    """Parse --filter key=value args into a ChromaDB where dict."""
     if not filter_args:
         return None
     where = {}
@@ -257,10 +203,7 @@ def parse_filters(filter_args):
     return where
 
 def retrieve_chunks(collection, query_embedding, top_k=10, filters=None, contains=None):
-    """
-    Single source of truth for retrieval.
-    Used by query(), chat(), and later agent tools.
-    """
+    """Run a vector similarity query against a ChromaDB collection."""
     kwargs = {
         "query_embeddings": [query_embedding],
         "n_results": top_k,
@@ -307,7 +250,6 @@ def chunk(method="recursive-split", source="pdf", skip_existing=False):
                 print(f"Failed to open {pdf_file}: {e}")
                 continue
 
-            # Extract full text (or consider first N pages for metadata)
             input_text = "\n".join([p.get_text() for p in doc])
 
             text_chunks = None
@@ -390,12 +332,10 @@ def chunk(method="recursive-split", source="pdf", skip_existing=False):
 def embed(method="recursive-split", skip_existing=False):
     print("embed()")
 
-    # Get the list of chunk files
     jsonl_files = glob.glob(os.path.join(
         OUTPUT_FOLDER, f"chunks-{method}-*.jsonl"))
     print("Number of files to process:", len(jsonl_files))
 
-    # Process
     for jsonl_file in jsonl_files:
         embeddings_filename = jsonl_file.replace("chunks-", "embeddings-")
         if skip_existing and os.path.exists(embeddings_filename):
@@ -429,8 +369,8 @@ def embed(method="recursive-split", skip_existing=False):
             json_file.write(data_df.to_json(orient='records', lines=True))
 
 
-def generate_image_embeddings(image_paths, dimensionality: int = 256, batch_size=1, max_retries=1, retry_delay=5):
-    """Generate embeddings for images using Vertex AI's MultiModalEmbeddingModel."""
+def generate_image_embeddings(image_paths, batch_size=1, max_retries=1, retry_delay=5):
+    """Generate 1408-dim multimodal embeddings for images using Vertex AI."""
     import vertexai
 
     # Initialize Vertex AI
@@ -449,8 +389,6 @@ def generate_image_embeddings(image_paths, dimensionality: int = 256, batch_size
             success = False
             while retry_count <= max_retries:
                 try:
-                    from vertexai.vision_models import Image
-
                     # Load image using Vertex AI Image class
                     image = Image.load_from_file(img_path)
 
@@ -533,7 +471,7 @@ def embed_fashion_show_photos(images_folder="Dataset DataShack 2026"):
         image_files = sorted(image_files)
 
         # Generate embeddings for this season
-        embeddings = generate_image_embeddings(image_files, EMBEDDING_DIMENSION)
+        embeddings = generate_image_embeddings(image_files)
 
         # Create dataframe with image metadata
         data = []
@@ -568,15 +506,11 @@ def load(method="recursive-split"):
     # Clear Cache
     chromadb.api.client.SharedSystemClient.clear_system_cache()
 
-    # Connect to chroma DB
     client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
-
-    # Get a collection object from an existing collection, by name. If it doesn't exist, create it.
     collection_name = f"{method}-collection"
     print("Creating collection:", collection_name)
 
     try:
-        # Clear out any existing items in the collection
         client.delete_collection(name=collection_name)
         print(f"Deleted existing collection '{collection_name}'")
     except Exception:
@@ -585,14 +519,11 @@ def load(method="recursive-split"):
     collection = client.create_collection(
         name=collection_name, metadata={"hnsw:space": "cosine"})
     print(f"Created new empty collection '{collection_name}'")
-    print("Collection:", collection)
 
-    # Get the list of embedding files
     jsonl_files = glob.glob(os.path.join(
         OUTPUT_FOLDER, f"embeddings-{method}-*.jsonl"))
     print("Number of files to process:", len(jsonl_files))
 
-    # Process
     for jsonl_file in jsonl_files:
         print("Processing file:", jsonl_file)
 
@@ -621,7 +552,6 @@ def load_fashion_show_photos():
     # Load rich metadata keyed by NFC-normalized source_path for O(1) lookup.
     # Normalization avoids mismatches when the same character (e.g. é) is encoded
     # as a single codepoint (NFC) in one file and as base+combining accent (NFD) in another.
-    import unicodedata
     metadata_by_path = {}
     if os.path.exists(METADATA_FILE):
         with open(METADATA_FILE, encoding="utf-8") as f:
@@ -751,30 +681,11 @@ def load_fashion_show_photos():
     print(f"\n✓ Fashion show photos loading complete. Total: {total_loaded} images across {len(embedding_files)} seasons into '{COLLECTION_NAME}'")
 
 
-def query(method="recursive-split", q=None, top_k=10, filters=None, contains=None):  # update query() to accept args + filters
-    """
-    Perform a similarity search on a Chroma collection using
-    an embedded query, optionally applying metadata and lexical filters.
+def query(method="recursive-split", q=None, top_k=10, filters=None, contains=None):
+    """Print top-k similar chunks from ChromaDB for a query string."""
+    print("query()")
 
-    Args:
-        method (str): Collection prefix (used to construct collection name).
-
-    Behavior:
-        - Connects to ChromaDB.
-        - Generates an embedding for a predefined query string.
-        - Retrieves top-k similar chunks using:
-            • Vector similarity
-            • Optional metadata filter (where=...)
-            • Optional lexical filter (where_document=...)
-        - Prints retrieved results.
-    """
-
-    print("load()")
-
-    # Connect to chroma DB
     client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
-
-    # Get a collection object from an existing collection, by name. If it doesn't exist, create it.
     collection_name = f"{method}-collection"
 
     query = q or "What does Ferré say about creativity?"
@@ -797,27 +708,11 @@ def query(method="recursive-split", q=None, top_k=10, filters=None, contains=Non
     print("\n\nResults:", results)
 
 
-def chat(method="recursive-split", q=None, top_k=10, filters=None, contains=None):   # update chat() to accept args + filters
-    """
-    Run a simple RAG pipeline: retrieve relevant chunks and
-    generate an LLM response using retrieved context.
-
-    Args:
-        method (str): Collection prefix (used to construct collection name).
-
-    Behavior:
-        - Connects to ChromaDB.
-        - Embeds the user query.
-        - Retrieves top-k similar documents from the collection.
-        - Constructs a prompt combining the query and retrieved text.
-        - Sends prompt to a generative LLM.
-        - Prints the model's response.
-    """
+def chat(method="recursive-split", q=None, top_k=10, filters=None, contains=None):
+    """Retrieve top-k chunks and generate an LLM response (RAG)."""
     print("chat()")
 
-    # Connect to chroma DB
     client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT, ssl=CHROMADB_SSL)
-    # Get a collection object from an existing collection, by name. If it doesn't exist, create it.
     collection_name = f"{method}-collection"
 
     query = q or "Summarize Ferré's ideas in the archive."
@@ -888,8 +783,6 @@ def main(args=None):
 
 
 if __name__ == "__main__":
-    # Generate the inputs arguments parser
-    # if you type into the terminal '--help', it will provide the description
     parser = argparse.ArgumentParser(description="CLI")
 
     parser.add_argument(
@@ -935,8 +828,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Skip PDFs/chunks whose output file already exists (incremental processing)",
     )
-    
-    # add new argparse options for metadata filtering
     parser.add_argument("--q", type=str, default=None, 
                         help="Query string")
 

@@ -34,17 +34,7 @@ class ChatHistoryManager:
         return os.path.join(self.history_dir, session_id, f"{chat_id}.json")
 
     def _save_image(self, chat_id: str, message_id: str, image_data: str) -> str:
-        """
-        Save image data to a file and return the relative path.
-
-        Args:
-            chat_id: The chat ID
-            message_id: The message ID
-            image_data: Base64 encoded image data
-
-        Returns:
-            str: Relative path to the saved image
-        """
+        """Save base64-encoded image data to disk; returns the relative path."""
         # Create chat-specific image directory
         chat_images_dir = os.path.join(self.images_dir, chat_id)
         os.makedirs(chat_images_dir, exist_ok=True)
@@ -73,27 +63,6 @@ class ChatHistoryManager:
             print(f"Error saving image: {str(e)}")
             traceback.print_exc()
             return ""
-
-    def _load_image(self, relative_path: str) -> Optional[str]:
-        """
-        Load image data from file and return as base64.
-
-        Args:
-            relative_path: Relative path to the image from chat history root
-
-        Returns:
-            Optional[str]: Base64 encoded image data or None if loading fails
-        """
-        full_path = os.path.join(self.history_dir, relative_path)
-        try:
-            if os.path.exists(full_path):
-                with open(full_path, "rb") as f:
-                    image_bytes = f.read()
-                return base64.b64encode(image_bytes).decode("utf-8")
-        except Exception as e:
-            print(f"Error loading image: {str(e)}")
-            traceback.print_exc()
-        return None
 
     def save_chat(self, chat_to_save: Dict, session_id: str) -> None:
         """Save a chat to both memory and file, handling images separately"""
@@ -150,7 +119,6 @@ class ChatHistoryManager:
                 print(f"Error loading chat history from {filepath}: {str(e)}")
                 traceback.print_exc()
 
-        # Sort by dts
         recent_chats.sort(key=lambda x: x.get("dts", 0), reverse=True)
         if limit:
             return recent_chats[:limit]

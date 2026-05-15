@@ -4,8 +4,6 @@ import time
 import mimetypes
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import unicodedata
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, Request, HTTPException
 from fastapi.responses import FileResponse
@@ -29,7 +27,7 @@ from api.utils.agent_orchestrator import (
     CHROMADB_SSL,
 )
 from api.utils.chat_utils import ChatHistoryManager, ChatMessage
-from api.utils.gcs_utils import DATASET_PREFIX, build_proxy_url
+from api.utils.gcs_utils import build_image_url
 
 router = APIRouter()
 
@@ -64,11 +62,7 @@ class ItemChatMessage(BaseModel):
 # ── Image search helpers (general chat) ───────────────────────────────────────
 
 def _build_image_url(request: Request, source_path: str) -> str:
-    proxy = build_proxy_url(str(request.base_url), source_path)
-    if proxy:
-        return proxy
-    relative = unicodedata.normalize("NFC", source_path.removeprefix(DATASET_PREFIX))
-    return str(request.base_url).rstrip("/") + f"/design-images/{quote(relative, safe='/')}"
+    return build_image_url(str(request.base_url), source_path)
 
 
 def _search_similar_images(
