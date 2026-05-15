@@ -6,34 +6,21 @@ This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfr
 
 ## System Overview
 
-```
-vector-db (offline)          api-service (Docker)         frontend-react (npm)
-┌─────────────────┐          ┌──────────────────┐          ┌──────────────────┐
-│ chunk PDFs      │          │ /archive/*        │          │ image grid       │
-│ embed text      │──load──▶ │   landing feed    │◀────────▶│ filters          │
-│ embed images    │          │   item detail     │          │ item detail modal│
-│ load ChromaDB   │          │   image proxy     │          │ conversation chat│
-└─────────────────┘          │ /llm-agent/*      │          └──────────────────┘
-                             │   multi-turn chat │
-                             └──────────────────┘
-                                     │                 │
-                              ChromaDB           PostgreSQL
-                           (text + image       (FashionItem
-                            embeddings)          metadata)
-```
+Three services work together at runtime:
 
-**Key services:**
+- **`src/api-service/`** — FastAPI backend. Serves the archive browse endpoints (`/archive/*`), proxies images from GCS, and runs the agentic RAG chat (`/llm-agent/*`). Connects to ChromaDB (for vector search) and PostgreSQL (for item metadata).
+- **`src/frontend-react/`** — Next.js app. Renders the image grid, filters, item detail modal, and conversation popup. Talks only to the api-service.
+- **`src/vector-db/`** — Offline CLI (not a server). Used once to chunk archive PDFs, generate embeddings, and load them into ChromaDB. Can target a local or deployed ChromaDB instance.
 
-| Service | Role |
+**Infrastructure:**
+
+| Component | Role |
 |---|---|
-| `src/vector-db/` | Offline CLI — chunks archive PDFs, generates embeddings, loads ChromaDB |
-| `src/api-service/` | FastAPI — archive browse endpoints, GCS image proxy, agentic RAG chat |
-| `src/frontend-react/` | Next.js — visual archive browser with password gate |
-| ChromaDB | Vector store — `semantic-split-collection` (text, 256-dim) + `images-fashion-show-photos` (images, 1408-dim) |
-| PostgreSQL | Relational store — `FashionItem` table seeded from archive metadata |
-| Google Cloud Storage | Image hosting — bucket `ferre-archive` |
-| Gemini 2.0 Flash | LLM for agent chat |
-| Vertex AI | Embeddings — `text-embedding-004` (text) + `multimodalembedding@001` (images) |
+| ChromaDB | Vector store — text chunks (`semantic-split-collection`, 256-dim) and fashion show images (`images-fashion-show-photos`, 1408-dim) |
+| PostgreSQL | `FashionItem` metadata table, seeded from archive JSONL on api-service startup |
+| Google Cloud Storage | Image hosting — bucket `ferre-archive`, proxied through the api-service |
+| Gemini 2.0 Flash | LLM powering the agent chat |
+| Vertex AI | Embedding models — `text-embedding-004` (text) and `multimodalembedding@001` (images) |
 
 ---
 
@@ -93,9 +80,8 @@ ferre-rag-model/
 
 ## Prerequisites
 
-- Docker (Colima works on macOS: `colima start`)
+- Docker
 - Node.js 18+ (for frontend local dev without Docker)
-- A Google Cloud project with Vertex AI API enabled
 - `gcloud` CLI installed and authenticated:
   ```bash
   gcloud auth application-default login
@@ -247,37 +233,6 @@ python cli.py --chat --q "..." --filter doc="Notes_White shirt"
 python cli.py --chat --q "..." --contains "architecture"
 python cli.py --chat --q "..." --top_k 20
 ```
-
-### Chunking parameters
-
-Chunk size is measured in **tokens** (`cl100k_base` tokenizer). Defaults in `cli.py`:
-
-```python
-CHUNK_SIZE_TOKENS = 350
-CHUNK_OVERLAP_TOKENS = 50
-```
-
-| Range (tokens) | Approx. characters | When to use |
-|---|---|---|
-| 128–256 | ~500–1000 | High-precision retrieval, short factual sentences |
-| **256–512** | **~1000–2000** | **Recommended — current default** |
-| 512–1024 | ~2000–4000 | Long documents, more context per chunk |
-
-### Embedding parameters
-
-```python
-EMBEDDING_MODEL = "text-embedding-004"
-EMBEDDING_DIMENSION = 256
-```
-
-| Model | Best for |
-|---|---|
-| `text-embedding-004` | English text (default) |
-| `text-multilingual-embedding-002` | Italian or mixed-language texts |
-
-Both models support Matryoshka dimensions (256 / 512 / 768). Image embeddings use `multimodalembedding@001` at dimension 1408 (fixed).
-
----
 
 ## API Service — Routes
 
