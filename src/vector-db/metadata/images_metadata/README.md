@@ -1,6 +1,6 @@
 # Image Metadata Pipeline
 
-This module contains the cleaned final image metadata pipeline for Ferre archive retrieval. It combines PDF-grounded archive records, missing-PDF visual clustering, and a controlled fashion ontology to produce image-level metadata for ChromaDB retrieval and API/Postgres browsing.
+This module contains the cleaned final image metadata pipeline for Ferré archive retrieval. It combines PDF-grounded archive records, missing-PDF visual clustering, and a controlled fashion ontology to produce image-level metadata for ChromaDB retrieval and API/Postgres browsing.
 
 ## Folder Structure
 
@@ -47,3 +47,9 @@ The API seed copy should always match the final image metadata file exactly.
 For normal use, rerunning is not required; use the checked-in final metadata artifact. To regenerate, run the stage scripts from `src/vector-db` so relative paths resolve consistently, rebuild the combined cluster registry, and then run `final_metadata_generation/metadata_generation.py`.
 
 Older debug, batch, draft, and path-repair artifacts were removed from this clean submission repo. The full working history remains in the original development repo.
+
+## Limitations
+
+- The API seed copy should match `final_metadata_generation/generated_image_metadata_final.jsonl`.
+- Missing-PDF clusters are based on visual similarity and may still need human review for ambiguous looks.
+- Some tags are stored in flattened/searchable form for Chroma compatibility.

@@ -33,6 +33,14 @@ ferre-rag-model/
 │   ├── vector-db/              # Offline embedding pipeline
 │   │   ├── cli.py              # Main CLI (--chunk, --embed, --load, --query, --chat)
 │   │   ├── semantic_splitter.py
+│   │   ├── metadata/
+│   │   │   ├── images_metadata/
+│   │   │   │   ├── README.md
+│   │   │   │   ├── fashion_ontology/
+│   │   │   │   ├── grounded_clustering/
+│   │   │   │   ├── missing_pdf_clustering/
+│   │   │   │   └── final_metadata_generation/
+│   │   │   └── text_metadata/
 │   │   ├── docker-shell.sh
 │   │   ├── docker-compose.yml  # Includes local ChromaDB container
 │   │   ├── docker-entrypoint.sh
