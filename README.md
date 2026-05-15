@@ -1,149 +1,267 @@
-# Gianfranco Ferré Archive RAG System
+# Gianfranco Ferré Archive
 
 This project builds a Retrieval-Augmented Generation (RAG) system for the Gianfranco Ferré archive, using a vector database and a Large Language Model (LLM). The system ingests Ferré PDFs, chunks them, generates embeddings, stores them in ChromaDB, and enables search and chat over the archive through a web interface.
 
 <img src="images/ferre.png" width="800">
 
-## Project Overview
+## System Overview
 
-**Workflow:**
-1. Chunk Ferré archive PDFs into text segments
-2. Generate embeddings for text chunks (Vertex AI)
-3. Generate embeddings for fashion show images by season
-4. Load chunks, embeddings, and images into ChromaDB (separate collections per season)
-5. Query and chat with the archive using LLM (text and images)
-6. Agent mode: LLM automatically selects the right retrieval strategy and generates a grounded answer
+```
+vector-db (offline)          api-service (Docker)         frontend-react (npm)
+┌─────────────────┐          ┌──────────────────┐          ┌──────────────────┐
+│ chunk PDFs      │          │ /archive/*        │          │ image grid       │
+│ embed text      │──load──▶ │   landing feed    │◀────────▶│ filters          │
+│ embed images    │          │   item detail     │          │ item detail modal│
+│ load ChromaDB   │          │   image proxy     │          │ conversation chat│
+└─────────────────┘          │ /llm-agent/*      │          └──────────────────┘
+                             │   multi-turn chat │
+                             └──────────────────┘
+                                     │                 │
+                              ChromaDB           PostgreSQL
+                           (text + image       (FashionItem
+                            embeddings)          metadata)
+```
 
-**Architecture:**
-- `src/vector-db/` — Python CLI pipeline for chunking, embedding, and loading data
-- `src/api-service/` — FastAPI backend exposing LLM, RAG, and Agent chat endpoints
-- `src/frontend-react/` — Next.js frontend with chat interface
-- ChromaDB vector database
-- Vertex AI / Gemini 2.0 Flash for LLM and embeddings
-- Docker for containerized development
+**Key services:**
 
-## Prerequisites
-- Docker installed
-- Clone this repository
-- Ferré archive PDFs (add to `src/vector-db/input-datasets/ferre-notes-lessons/`)
-- Ferré fashion show images (add to `src/vector-db/input-datasets/ferre-designs/Dataset DataShack 2026/[SEASON]/`)
-- GCP service account with Vertex AI access
+| Service | Role |
+|---|---|
+| `src/vector-db/` | Offline CLI — chunks archive PDFs, generates embeddings, loads ChromaDB |
+| `src/api-service/` | FastAPI — archive browse endpoints, GCS image proxy, agentic RAG chat |
+| `src/frontend-react/` | Next.js — visual archive browser with password gate |
+| ChromaDB | Vector store — `semantic-split-collection` (text, 256-dim) + `images-fashion-show-photos` (images, 1408-dim) |
+| PostgreSQL | Relational store — `FashionItem` table seeded from archive metadata |
+| Google Cloud Storage | Image hosting — bucket `ferre-archive` |
+| Gemini 2.0 Flash | LLM for agent chat |
+| Vertex AI | Embeddings — `text-embedding-004` (text) + `multimodalembedding@001` (images) |
 
-## Secrets & Environment Setup
-- Obtain a GCP service account key (JSON) and place it in `secrets/llm-service-account.json` (outside the repo)
-- Set `GCP_PROJECT` and `GOOGLE_APPLICATION_CREDENTIALS` in each `docker-shell.sh`
-- **Never commit service account files to the repo**
-
-## Setup GCP Service Account
-1. Go to [GCP Console](https://console.cloud.google.com/home/dashboard)
-2. Create a service account with "Vertex AI User" and "Storage Admin" roles
-3. Download the JSON key and place it in `secrets/llm-service-account.json` (next to the repo, not inside it)
-4. In each `docker-shell.sh`, set `GCP_PROJECT` to your project ID and `GOOGLE_APPLICATION_CREDENTIALS` to `/secrets/llm-service-account.json`
+---
 
 ## Folder Structure
+
 ```
-Desktop/  (or wherever you cloned the repo)
-├── secrets/                        # Outside the repo — never committed
-│   └── llm-service-account.json
-└── ferre-rag-model/
-    └──Dataset Datashack 2026/
-           └──ALTA MODA 1986-87 FW/Womenswear/Fashion show photos
-           └──ALTA MODA 1987 SS/Womenswear/Fashion show photos
-           └──ALTA MODA 1987-88 FW/Womenswear/Fashion show photos
-           └──ALTA MODA 1988 SS/Womenswear/Fashion show photos
-           └──ALTA MODA 1988-89 FW/Womenswear/Fashion show photos
-           └──ALTA MODA 1989 SS/Womenswear/Fashion show photos
-    └── src/
-    ├── vector-db/                  # Offline pipeline: chunk, embed, load
-    │   ├── outputs/                   # Chunked and embedded data
-    │   ├── metadata/                  # Archive metadata JSON files
-    │   ├── cli.py
-    │   ├── agent_tools.py
-    │   ├── semantic_splitter.py
-    │   ├── docker-shell.sh
-    │   ├── docker-compose.yml
-    │   └── Dockerfile
-    ├── api-service/                # FastAPI backend
-    │   ├── api/
-    │   │   ├── routers/
-    │   │   │   ├── llm_chat.py         # Plain LLM chat
-    │   │   │   ├── llm_rag_chat.py     # RAG chat
-    │   │   │   └── llm_agent_chat.py   # Agentic RAG chat
-    │   │   ├── utils/
-    │   │   │   ├── llm_utils.py
-    │   │   │   ├── llm_rag_utils.py
-    │   │   │   ├── llm_agent_utils.py
-    │   │   │   ├── agent_tools.py
-    │   │   │   └── chat_utils.py
-    │   │   └── service.py
-    │   ├── docker-shell.sh
-    │   ├── docker-compose.yml
-    │   └── Dockerfile
-    └── frontend-react/             # Next.js frontend
-        ├── src/
-        │   ├── app/
-        │   │   └── chat/           # Main chat interface
-        │   ├── components/
-        │   │   ├── chat/           # Chat UI components
-        │   │   └── layout/         # Header, Footer
-        │   └── services/
-        │       └── DataService.js  # API client
-        ├── docker-shell.sh
-        └── package.json
+ferre-rag-model/
+├── .env                        # Root env vars shared across services
+├── src/
+│   ├── vector-db/              # Offline embedding pipeline
+│   │   ├── cli.py              # Main CLI (--chunk, --embed, --load, --query, --chat)
+│   │   ├── semantic_splitter.py
+│   │   ├── docker-shell.sh
+│   │   ├── docker-compose.yml  # Includes local ChromaDB container
+│   │   ├── docker-entrypoint.sh
+│   │   └── Dockerfile
+│   ├── api-service/            # FastAPI backend
+│   │   ├── api/
+│   │   │   ├── service.py              # App entrypoint + /archive/* routes
+│   │   │   ├── routers/
+│   │   │   │   └── llm_agent_chat.py   # /llm-agent/chats, /llm-agent/item-chats
+│   │   │   ├── models/
+│   │   │   │   └── fashion_item.py     # SQLModel FashionItem table
+│   │   │   ├── seeds/
+│   │   │   │   └── seed.py             # Seeds FashionItem from JSONL on startup
+│   │   │   └── utils/
+│   │   │       ├── agent_orchestrator.py   # Gemini function-calling agent
+│   │   │       ├── retrieval_tools.py      # ChromaDB retrieval helpers
+│   │   │       ├── chat_utils.py           # Chat persistence
+│   │   │       └── gcs_utils.py            # GCS image fetching + proxy
+│   │   ├── .env
+│   │   ├── docker-shell.sh
+│   │   └── docker-compose.yml      # Includes PostgreSQL container
+│   └── frontend-react/         # Next.js visual archive browser
+│       ├── src/
+│       │   ├── app/
+│       │   │   ├── page.tsx            # Home — image grid + search + filters
+│       │   │   └── layout.tsx          # Root layout with password gate
+│       │   ├── components/
+│       │   │   ├── ImageGrid.tsx       # Infinite-scroll masonry grid
+│       │   │   ├── ImageCard.tsx       # Single archive card
+│       │   │   ├── FilterBar.tsx       # Season / item / colour / material chips
+│       │   │   ├── SearchBar.tsx       # Floating search → opens ConversationPopup
+│       │   │   ├── ConversationPopup.tsx   # Full-screen agent chat with citations
+│       │   │   ├── ItemDetailModal.tsx     # Item detail + cluster carousel + item chat
+│       │   │   ├── TitleBar.tsx
+│       │   │   └── PasswordGate.tsx    # Session-scoped password gate
+│       │   └── lib/
+│       │       ├── api.ts              # All fetch calls to the backend
+│       │       ├── types.ts            # Shared TypeScript types
+│       │       └── chat-utils.tsx      # Shared citation rendering utility
+│       ├── next.config.js
+│       └── package.json
 ```
 
 ---
 
-## 1. Vector DB Setup
+## Prerequisites
 
-Navigate to the vector-db directory:
-```bash
-cd ferre-rag-model/src/vector-db
+- Docker (Colima works on macOS: `colima start`)
+- Node.js 18+ (for frontend local dev without Docker)
+- A Google Cloud project with Vertex AI API enabled
+- `gcloud` CLI installed and authenticated:
+  ```bash
+  gcloud auth application-default login
+  ```
+- Root `.env` file in the repo root (see below)
+
+---
+
+## Environment Setup
+
+### Root `.env` (repo root)
+
+Controls which ChromaDB instance all services connect to and holds shared credentials:
+
+```env
+GCP_PROJECT=ferre-rag-model
+POSTGRES_DB=ragdb
+POSTGRES_USER=app
+POSTGRES_PASSWORD=app
+GOOGLE_API_KEY=<your Gemini API key>
+
+# ChromaDB target — switch between local and deployed:
+CHROMADB_HOST=ferre-chromadb-323252296985.us-central1.run.app
+CHROMADB_PORT=443
+CHROMADB_SSL=true
 ```
 
-Build and run the container:
-```bash
-sh docker-shell.sh
+To point at a **local** ChromaDB container instead:
+```env
+CHROMADB_HOST=llm-rag-chromadb
+CHROMADB_PORT=8000
+CHROMADB_SSL=false
 ```
 
-This will build the Docker image, start ChromaDB, and run the chunk/embed/load pipeline automatically.
+### `src/api-service/.env`
 
-### How conditional startup works
+Mirrors the ChromaDB vars plus service-specific config:
+```env
+GCP_PROJECT=ferre-rag-model
+GCS_BUCKET=ferre-archive
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=ragdb
+POSTGRES_USER=app
+POSTGRES_PASSWORD=app
+CHROMADB_HOST=ferre-chromadb-323252296985.us-central1.run.app
+CHROMADB_PORT=443
+CHROMADB_SSL=true
+```
 
-When `docker-shell.sh` launches the container, `docker-entrypoint.sh` runs automatically and skips steps that have already been completed. Each step is checked independently:
+### Google credentials
 
-| Step | Skip condition | What is checked |
+The api-service container reads Application Default Credentials from `~/.config/gcloud` (mounted read-only at `/home/app/.config/gcloud`). No service account key file is needed — ADC from `gcloud auth application-default login` is sufficient.
+
+---
+
+## Running Locally
+
+Each service can independently point at a **local** Docker container or a **deployed** Cloud Run instance. Mix and match depending on what you need:
+
+| Service | Local | Deployed |
 |---|---|---|
-| **Chunk** | `outputs/chunks*.jsonl` already exists | Presence of any chunk file in `outputs/`. If nothing is present, `python cli.py --chunk` is run |
-| **Embed (text)** | `outputs/embeddings*.jsonl` already exists | Presence of any text embedding file in `outputs/`. If nothing is present, `python cli.py --embed` is run |
-| **Load text** | At least one non-image collection exists in ChromaDB | Any collection whose name does **not** start with `images-` counts |
-| **Load images** | At least one image collection exists in ChromaDB | Any collection whose name starts with `images-` counts |
+| **ChromaDB** | `llm-rag-chromadb` container (port 8000) — started by vector-db compose | `ferre-chromadb-323252296985.us-central1.run.app:443` |
+| **api-service** | Docker container (port 9000) | `ferre-api-323252296985.us-central1.run.app` |
+| **PostgreSQL** | Docker container (port 5432) — started by api-service compose | — |
+| **frontend** | `npm run dev` (port 3000) | Deployed separately |
+| **vector-db** | Always runs locally (offline pipeline, not a server) | N/A |
 
-> **Note:** the checks are intentionally generic — they verify whether *any* data of that type is present, not whether it matches a specific `--chunk_type`. If you want to force a specific chunk type, re-run the relevant steps manually once the container is running:
-> ```bash
-> python cli.py --chunk --chunk_type char-split
-> python cli.py --embed --chunk_type char-split
-> python cli.py --load --chunk_type char-split
-> ```
+### Typical local dev setup
+
+This is the most common configuration: api-service and frontend run locally, ChromaDB and GCS are the deployed instances.
+
+**1. Start the api-service:**
+```bash
+cd src/api-service
+sh docker-shell.sh        # builds image, starts container + postgres
+# inside the container:
+uvicorn_server
+```
+API available at `http://localhost:9000`. Interactive docs at `http://localhost:9000/docs`.
+
+**2. Start the frontend:**
+```bash
+cd src/frontend-react
+npm install               # first time only
+npm run dev
+```
+App available at `http://localhost:3000`.
+
+The frontend defaults to `http://localhost:9000` for the API. To point it at the deployed api-service instead, create `src/frontend-react/.env.local`:
+```env
+NEXT_PUBLIC_API_BASE_URL=https://ferre-api-323252296985.us-central1.run.app
+```
+
+### Using a local ChromaDB (for vector-db loading)
+
+The local ChromaDB container (`llm-rag-chromadb`) is defined in `src/vector-db/docker-compose.yml` and starts automatically when you run `sh docker-shell.sh` there.
+
+To switch everything to use it, update the root `.env`:
+```env
+CHROMADB_HOST=llm-rag-chromadb
+CHROMADB_PORT=8000
+CHROMADB_SSL=false
+```
+Or override inline without touching the file:
+```bash
+CHROMADB_HOST=llm-rag-chromadb CHROMADB_PORT=8000 CHROMADB_SSL=false sh docker-shell.sh
+```
+
+---
+
+## Vector DB — Embedding Pipeline
+
+The vector-db is an **offline CLI tool** — it is not a server. Run it once to populate ChromaDB, then point the api-service at the same ChromaDB instance.
+
+```bash
+cd src/vector-db
+sh docker-shell.sh        # builds image, opens shell (starts local ChromaDB if CHROMADB_HOST=llm-rag-chromadb)
+```
+
+### Text pipeline (archive PDFs → ChromaDB)
+
+```bash
+# Inside the container:
+python cli.py --chunk --chunk_type recursive-split
+python cli.py --embed --chunk_type recursive-split
+python cli.py --load --chunk_type recursive-split
+```
+
+Outputs are saved to `outputs/` as `.jsonl` files. Re-running skips steps whose output files already exist.
+
+### Image pipeline (fashion show photos → ChromaDB)
+
+```bash
+python cli.py --embed-fashion-show-photos
+python cli.py --load-fashion-show-photos
+```
+
+One `.jsonl` per season is written to `outputs/`. All seasons load into a single ChromaDB collection `images-fashion-show-photos` with season preserved as metadata on each document.
+
+### Query / chat (debugging)
+
+```bash
+python cli.py --query --chunk_type recursive-split --q "What does Ferré say about elegance?"
+python cli.py --chat  --chunk_type recursive-split --q "What does Ferré say about elegance?"
+
+# Optional filters:
+python cli.py --chat --q "..." --filter doc="Notes_White shirt"
+python cli.py --chat --q "..." --contains "architecture"
+python cli.py --chat --q "..." --top_k 20
+```
 
 ### Chunking parameters
 
-All chunking methods measure `chunk_size` and `chunk_overlap` in **tokens** (not characters), using the `cl100k_base` tokenizer (GPT-4) as a close approximation for `text-embedding-004`.
-
-The defaults are defined at the top of [cli.py](src/vector-db/cli.py):
+Chunk size is measured in **tokens** (`cl100k_base` tokenizer). Defaults in `cli.py`:
 
 ```python
-CHUNK_SIZE_TOKENS = 350       # tokens per chunk
-CHUNK_OVERLAP_TOKENS = 50     # tokens of overlap between consecutive chunks (~14%)
+CHUNK_SIZE_TOKENS = 350
+CHUNK_OVERLAP_TOKENS = 50
 ```
-
-**Target chunk size guide:**
 
 | Range (tokens) | Approx. characters | When to use |
 |---|---|---|
 | 128–256 | ~500–1000 | High-precision retrieval, short factual sentences |
-| **256–512** | **~1000–2000** | **Recommended balance for RAG — good for Ferré archive texts** |
-| 512–1024 | ~2000–4000 | Long structured documents, more context per retrieved chunk |
+| **256–512** | **~1000–2000** | **Recommended — current default** |
+| 512–1024 | ~2000–4000 | Long documents, more context per chunk |
 
 ### Embedding parameters
 
@@ -155,178 +273,34 @@ EMBEDDING_DIMENSION = 256
 | Model | Best for |
 |---|---|
 | `text-embedding-004` | English text (default) |
-| `text-multilingual-embedding-002` | Italian or mixed-language text — recommended if archive PDFs are in Italian |
+| `text-multilingual-embedding-002` | Italian or mixed-language texts |
 
-**`EMBEDDING_DIMENSION`** — both models support Matryoshka representations:
-
-| Dimension | Quality | Notes |
-|---|---|---|
-| **256** | good | Current default |
-| **512** | better | Recommended upgrade |
-| 768 | best | Maximum quality |
-
-**Image embeddings** use `multimodalembedding@001` (Vertex AI) with dimension `1408` — independent from the text embedding constants.
-
-### Manual CLI Usage
-
-**Text Processing:**
-```bash
-python cli.py --chunk --chunk_type recursive-split
-python cli.py --embed --chunk_type recursive-split
-python cli.py --load --chunk_type recursive-split
-```
-
-**Image Processing (fashion show photos):**
-```bash
-python cli.py --embed-fashion-show-photos
-python cli.py --load-fashion-show-photos
-```
-
-This generates one `.jsonl` file per season (e.g. `embeddings-images-FW1986-1987-fashion-show-photos.jsonl`) and loads them all into a single ChromaDB collection `images-fashion-show-photos`. Season is preserved as metadata on each record. Other image types (e.g. technical sheets, drawings) will use separate commands and collections when added.
-
-### Query and Chat (CLI)
-
-**Query** (returns raw retrieved chunks):
-```bash
-python cli.py --query --chunk_type recursive-split --q "What does Ferré say about elegance?"
-```
-
-**Chat** (RAG — retrieves chunks then generates an LLM answer):
-```bash
-python cli.py --chat --chunk_type recursive-split --q "What does Ferré say about elegance?"
-```
-
-Optional filters:
-```bash
-python cli.py --chat --q "..." --filter doc="Notes_White shirt"
-python cli.py --chat --q "..." --contains "architecture"
-python cli.py --chat --q "..." --top_k 20
-```
-
-**Agent mode** (LLM selects retrieval strategy automatically):
-```bash
-python cli.py --agent --q "What are Ferré's ideas on creativity?"
-python cli.py --agent --q "What did Ferré say about fashion in 1997?"
-python cli.py --agent --top_k 15 --q "How does Ferré describe the relationship between fashion and architecture?"
-```
-
-| Tool | When used | Filter |
-|---|---|---|
-| `search_archive` | General questions across all documents | None |
-| `search_by_document` | Query targets a specific known document | `doc` = filename |
-| `search_by_year` | Query asks about a specific year | `year` = e.g. `"1997"` |
-
-Keep this container running while setting up the backend API service and frontend.
+Both models support Matryoshka dimensions (256 / 512 / 768). Image embeddings use `multimodalembedding@001` at dimension 1408 (fixed).
 
 ---
 
-## 2. Backend API Service
+## API Service — Routes
 
-Navigate to the API service directory:
-```bash
-cd ferre-rag-model/src/api-service
-```
+| Route | Description |
+|---|---|
+| `GET /archive/landing-feed` | Paginated image grid with season / garment / colour / material filters |
+| `GET /archive/item-detail` | Full metadata for a single archive item |
+| `GET /archive/item-cluster` | Other items in the same outfit cluster |
+| `GET /archive/filter-options` | Available filter values for the UI dropdowns |
+| `GET /archive/image` | GCS image proxy (streams image through the backend) |
+| `POST /llm-agent/chats` | Start a new multi-turn agent chat |
+| `POST /llm-agent/chats/{id}` | Continue an existing chat |
+| `POST /llm-agent/item-chats` | Start a chat scoped to a specific archive item |
+| `POST /llm-agent/item-chats/{id}` | Continue an item-scoped chat |
 
-Build and run the container:
-```bash
-sh docker-shell.sh
-```
-
-Start the API service inside the container:
-```bash
-uvicorn_server
-```
-
-Verify the service is running at `http://localhost:9000`.
-
-### View API Docs
-FastAPI provides interactive API documentation automatically:
-- Go to `http://localhost:9000/docs`
-- You can test all endpoints from this tool
-
-### Available Routes
-
-| Prefix | Router | Description |
-|---|---|---|
-| `/llm` | `llm_chat.py` | Plain LLM chat with conversation history |
-| `/llm-rag` | `llm_rag_chat.py` | RAG chat — retrieves archive chunks before answering |
-| `/llm-agent` | `llm_agent_chat.py` | Agentic RAG — LLM selects retrieval tool automatically |
-
-Each router exposes:
-- `GET /chats` — list recent chats
-- `GET /chats/{chat_id}` — get a specific chat
-- `POST /chats` — start a new chat
-- `POST /chats/{chat_id}` — continue an existing chat
-- `GET /images/{chat_id}/{message_id}.png` — serve a chat image
-
-Chat history is persisted to disk at `/persistent/chat-history/{model}/`.
-
-Keep this container running while setting up the frontend.
-
----
-
-## 3. Frontend
-
-Navigate to the frontend directory:
-```bash
-cd ferre-rag-model/src/frontend-react
-```
-
-Build and run the container:
-```bash
-sh docker-shell.sh
-```
-
-First time only — install dependencies:
-```bash
-npm install
-```
-
-Start the development server:
-```bash
-npm run dev
-```
-
-View the app at `http://localhost:3000`.
-
-### App Structure
-
-**Pages:**
-- `/` — redirects to `/chat`
-- `/chat` — main chat interface (home + active chat)
-
-**Chat Models (selectable in the UI):**
-- `Ferrè Assistant (LLM)` — plain conversational LLM
-- `Ferrè Expert (RAG)` — retrieves archive chunks before answering
-- `Ferrè Expert (Agent)` — agentic RAG with automatic tool selection
-
-**Key components:**
-- `ChatInput` — message input with image upload and model selector
-- `ChatMessage` — renders conversation with markdown and images
-- `ChatHistory` — recent chats grid on the home screen
-- `ChatHistorySidebar` — chat list in the active chat view
-
-**Data Service:**
-- `src/services/DataService.js` — all API calls to the backend
-
----
-
-## Architecture Diagrams
-
-**Step 1:**
-<img src="images/llm-rag-flow-1.png" width="800">
-
-**Step 2:**
-<img src="images/llm-rag-flow-2.png" width="800">
+Interactive docs: `http://localhost:9000/docs`
 
 ---
 
 ## Docker Cleanup
 
-Make sure we do not have any running containers and clear up unused images:
 ```bash
 docker container ls
-# Stop any running containers
 docker system prune
 docker image ls
 ```
@@ -340,4 +314,4 @@ docker image ls
 - Asia Capezzuoli
 - Stefan Golic
 
-Note: the contents of `Dataset DataShack 2026` are exactly the same as the contents of the OneDrive folder shared by the Centro di Ricerca Ferr� for the purposes of this project.
+> The contents of `Dataset DataShack 2026` are provided by the Centro di Ricerca Ferré for the purposes of this project.
